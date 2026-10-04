@@ -1,7 +1,7 @@
 """Portable Qt presentation for the manual climbing workspace."""
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont,QColor
-from PySide6.QtWidgets import (QWidget,QVBoxLayout,QHBoxLayout,QGridLayout,QLabel,QPushButton,QFrame,QTabWidget,QSplitter,QScrollArea,QHeaderView,QAbstractItemView,QComboBox,QTableWidget,QSpinBox)
+from PySide6.QtWidgets import (QWidget,QVBoxLayout,QHBoxLayout,QGridLayout,QLabel,QPushButton,QFrame,QTabWidget,QSplitter,QScrollArea,QHeaderView,QAbstractItemView,QComboBox,QTableWidget,QSpinBox,QMessageBox)
 from .version import APP_NAME,__version__
 
 STYLE='''
@@ -46,6 +46,8 @@ QProgressBar { border: none; background: #e3ebf6; border-radius: 6px; text-align
 QProgressBar::chunk { background: #2265d8; border-radius: 6px; }
 '''
 
+SHORTCUTS='Space  Play / pause\n← / →  Step (frame step)\nShift+← / →  One frame\nS / E  Climb start / end\nP  Mark point\nL / R  Left / right clip\nQ / W  Left / right rest\nC / V  Left / right chalk\nDelete  Remove selected\nCtrl+S  Save · Ctrl+Z / Ctrl+Y  Undo / redo'
+
 def label(text,name=None):
     w=QLabel(text)
     if name:w.setObjectName(name)
@@ -66,25 +68,36 @@ def page(tabs,title):
 def build(w):
     # Retain inherited editor fields and callbacks while moving visible controls.
     old=w.takeCentralWidget();old.setParent(w);old.hide();w.legacy_widget=old
-    root=QWidget();root.setObjectName('workspace');outer=QVBoxLayout(root);outer.setContentsMargins(22,18,22,10);outer.setSpacing(16);w.setCentralWidget(root)
-    top=QHBoxLayout();brand=QVBoxLayout();brand.setSpacing(2);brand.addWidget(label(APP_NAME,'brand'));brand.addWidget(label('Blue route  /  Manual measurement workspace','muted'));top.addLayout(brand)
-    badge=label('v'+__version__,'badge');badge.setFixedHeight(30);top.addWidget(badge);top.addStretch();w.theme_button=button('Dark mode',w.toggle_theme);top.addWidget(w.theme_button)
-    for text,cb,role in [('Add videos',w.open_video,None),('Load labels',w.load_labels,None),('Save athlete',w.save_labels,None),('Clear measurements',w.clear_measurements,'stop'),('Export all athletes',w.export_all,'primary'),('PDF',w.export_pdf,None)]:top.addWidget(button(text,cb,role))
+    root=QWidget();root.setObjectName('workspace');outer=QVBoxLayout(root);outer.setContentsMargins(14,10,14,4);outer.setSpacing(8);w.setCentralWidget(root)
+    # Rarely used actions live in the menu bar (native on macOS), keeping the window for the video.
+    bar=w.menuBar();menu=bar.addMenu('File')
+    for text,cb in [('Add videos…',w.open_video),('Load labels…',w.load_labels),('Save athlete',w.save_labels)]:menu.addAction(text,cb)
+    menu=bar.addMenu('Export')
+    for text,cb in [('All athletes · HTML + CSV…',w.export_all),('PDF report…',w.export_pdf)]:menu.addAction(text,cb)
+    menu=bar.addMenu('Measurements');menu.addAction('Clear this athlete…',w.clear_athlete);menu.addAction('Clear measurements…',w.clear_measurements)
+    menu=bar.addMenu('View');w.theme_button=menu.addAction('Dark mode',w.toggle_theme);menu.addAction('Fit video',w.image.fit)
+    menu=bar.addMenu('Help');menu.addAction('Keyboard shortcuts',lambda:QMessageBox.information(w,'Keyboard shortcuts',SHORTCUTS))
+    top=QHBoxLayout();top.setSpacing(6);top.addWidget(label(APP_NAME,'brand'));badge=label('v'+__version__,'badge');badge.setWordWrap(False);top.addWidget(badge);top.addSpacing(12)
+    top.addWidget(button('←',lambda:w.next_video(-1)));w.video_selector=QComboBox();w.video_selector.setMinimumWidth(240);w.video_selector.setToolTip('Video collection');w.video_selector.currentIndexChanged.connect(w.select_video);top.addWidget(w.video_selector,1);top.addWidget(button('→',lambda:w.next_video(1)))
+    top.addSpacing(12)
+    for text,cb,role in [('Add videos',w.open_video,None),('Save athlete',w.save_labels,None),('Export all athletes',w.export_all,'primary')]:top.addWidget(button(text,cb,role))
     outer.addLayout(top);outer.addWidget(w.progress)
-    queue=QHBoxLayout();queue.addWidget(label('VIDEO COLLECTION','muted'));queue.addWidget(button('← Previous',lambda:w.next_video(-1)));w.video_selector=QComboBox();w.video_selector.setMinimumWidth(300);w.video_selector.currentIndexChanged.connect(w.select_video);queue.addWidget(w.video_selector,1);queue.addWidget(button('Next →',lambda:w.next_video(1)));outer.addLayout(queue)
     w.main_tabs=QTabWidget();outer.addWidget(w.main_tabs,1)
     split=QSplitter(Qt.Orientation.Horizontal);w.main_tabs.addTab(split,'Video workspace')
-    video,v=card('VIDEO');w.image.setParent(video);w.image.setBackgroundBrush(QColor('#122137'));v.addWidget(w.image,1)
+    video=QFrame();video.setObjectName('card');v=QVBoxLayout(video);v.setContentsMargins(10,10,10,8);v.setSpacing(6);w.image.setParent(video);w.image.setBackgroundBrush(QColor('#122137'));v.addWidget(w.image,1)
     w.empty_hint=label('Open a video to begin.\nPlay to the moment you want to measure, pause, then mark it.','muted');w.empty_hint.setAlignment(Qt.AlignmentFlag.AlignCenter);v.addWidget(w.empty_hint)
-    controls=QHBoxLayout();w.play_button.setParent(video);w.play_button.setProperty('role','primary');controls.addWidget(w.play_button)
-    w.step_back_button=button('← 5 frames',lambda:w.step(-1));w.step_forward_button=button('5 frames →',lambda:w.step(1));controls.addWidget(w.step_back_button);controls.addWidget(w.step_forward_button);controls.addStretch();controls.addWidget(label('Speed','muted'));w.speed.setParent(video);controls.addWidget(w.speed);controls.addWidget(button('Fit view',w.image.fit));v.addLayout(controls)
+    controls=QHBoxLayout();controls.setSpacing(6);w.play_button.setParent(video);w.play_button.setProperty('role','primary');w.play_button.setMinimumWidth(110);controls.addWidget(w.play_button)
+    w.step_back_button=button('← 5 frames',lambda:w.step(-1));w.step_forward_button=button('5 frames →',lambda:w.step(1));controls.addWidget(w.step_back_button);controls.addWidget(w.step_forward_button)
+    w.frame_step=QSpinBox();w.frame_step.setRange(1,120);w.frame_step.setValue(int(w.settings.value("frame_step",5)));w.frame_step.setPrefix("Step ");w.frame_step.setMaximumWidth(90);w.frame_step.setToolTip('Frames per step button / arrow key. Shift+arrow steps one frame.');w.frame_step.valueChanged.connect(w.set_frame_step);controls.addWidget(w.frame_step);w.set_frame_step(w.frame_step.value())
+    w.speed.setParent(video);w.speed.setToolTip('Playback speed');controls.addWidget(w.speed);controls.addStretch()
+    w.position.setParent(video);w.position.setObjectName('muted');w.position.setWordWrap(False);controls.addWidget(w.position);controls.addWidget(button('Fit',w.image.fit,'quiet'));v.addLayout(controls)
     w.slider.hide()
     from .scrubber import PrecisionScrubber
     w.precision_scrubber=PrecisionScrubber();w.precision_scrubber.seek.connect(w.scrub_seconds);w.precision_scrubber.released.connect(w.finish_scrub);v.addWidget(w.precision_scrubber)
-    ruler=QHBoxLayout();ruler.addWidget(label('Timeline zoom','muted'));w.timeline_zoom=QComboBox()
+    ruler=QHBoxLayout();ruler.setSpacing(6);ruler.addWidget(label('Zoom','muted'));w.timeline_zoom=QComboBox();w.timeline_zoom.setToolTip('Pinch / wheel: zoom · two-finger scroll / right drag: pan')
     for title,seconds in [('Full video',0),('60 seconds',60),('30 seconds',30),('15 seconds',15),('5 seconds',5),('1 second',1)]:w.timeline_zoom.addItem(title,seconds)
     w.timeline_zoom.currentIndexChanged.connect(lambda index:w.precision_scrubber.set_span(w.timeline_zoom.itemData(index)));ruler.addWidget(w.timeline_zoom)
-    ruler.addWidget(button('Centre on playhead',lambda:w.precision_scrubber.set_span(w.precision_scrubber.span),'quiet'));ruler.addStretch();ruler.addWidget(label('Pinch / wheel: zoom · two-finger scroll / right drag: pan','muted'));v.addLayout(ruler)
+    ruler.addWidget(button('Centre',lambda:w.precision_scrubber.set_span(w.precision_scrubber.span),'quiet'));ruler.addStretch()
     def update_zoom(seconds):
         w.timeline_zoom.blockSignals(True);index=w.timeline_zoom.findData(seconds)
         if index<0:
@@ -92,9 +105,8 @@ def build(w):
             w.timeline_zoom.addItem(f'{seconds:.2f} seconds',seconds);index=w.timeline_zoom.count()-1
         w.timeline_zoom.setCurrentIndex(index);w.timeline_zoom.blockSignals(False)
     w.precision_scrubber.zoomChanged.connect(update_zoom)
-    w.position.setParent(video);w.position.setObjectName('muted');v.addWidget(w.position)
-    decode=QHBoxLayout();decode.addWidget(label('Video decoder','muted'));w.decoder_choice=QComboBox();w.decoder_choice.addItems(['CPU · low latency','NVIDIA GPU · CUDA','Prepared preview · fast seek']);w.decoder_choice.currentIndexChanged.connect(w.change_decoder);decode.addWidget(w.decoder_choice);decode.addStretch();decode.addWidget(label("Frame step","muted"));w.frame_step=QSpinBox();w.frame_step.setRange(1,120);w.frame_step.setValue(int(w.settings.value("frame_step",5)));w.frame_step.setMaximumWidth(75);w.frame_step.valueChanged.connect(w.set_frame_step);decode.addWidget(w.frame_step);w.set_frame_step(w.frame_step.value());v.addLayout(decode);split.addWidget(video)
-    preview_line=QHBoxLayout();w.preview_button=button('Prepare smooth preview',w.prepare_preview,'primary');preview_line.addWidget(w.preview_button);w.preview_status=label('Original video · prepare once for fast seeking','muted');preview_line.addWidget(w.preview_status,1);v.addLayout(preview_line)
+    w.preview_status=label('Original video · prepare once for fast seeking','muted');w.preview_status.setWordWrap(False);ruler.addWidget(w.preview_status);w.preview_button=button('Prepare smooth preview',w.prepare_preview);ruler.addWidget(w.preview_button)
+    w.decoder_choice=QComboBox();w.decoder_choice.addItems(['CPU · low latency','NVIDIA GPU · CUDA','Prepared preview · fast seek']);w.decoder_choice.setToolTip('Video decoder');w.decoder_choice.currentIndexChanged.connect(w.change_decoder);ruler.addWidget(w.decoder_choice);v.addLayout(ruler);split.addWidget(video)
     panel=QWidget();panel.setObjectName('page');measure=QVBoxLayout(panel);measure.setContentsMargins(12,10,12,10);measure.setSpacing(7);panel.setMinimumWidth(450);measurement_scroll=QScrollArea();measurement_scroll.setWidgetResizable(True);measurement_scroll.setMinimumWidth(475);measurement_scroll.setWidget(panel);split.addWidget(measurement_scroll);split.setSizes([870,500]);w.workspace_tabs=None
     line=QHBoxLayout();line.addWidget(w.climber,1);w.climber.setPlaceholderText('Athlete');line.addWidget(label('Attempt','muted'));w.attempt.setMaximumWidth(55);line.addWidget(w.attempt);line.addWidget(button('Clear this athlete',w.clear_athlete,'quiet'));measure.addLayout(line)
     line=QHBoxLayout();line.addWidget(button('Climb start · S',w.set_start,'start'));line.addWidget(button('×',lambda:w.clear_boundary('start'),'quiet'));line.addWidget(button('Climb end · E',w.set_failure,'stop'));line.addWidget(button('×',lambda:w.clear_boundary('end'),'quiet'));measure.addLayout(line)
@@ -123,9 +135,8 @@ def build(w):
     from .charts import ComparisonCharts
     w.comparison_charts=ComparisonCharts();w.main_tabs.addTab(w.comparison_charts,'Charts')
     from .dashboard import Dashboard
-    w.pattern_dashboard=Dashboard();w.main_tabs.addTab(w.pattern_dashboard,"Patterns & efficiency")
-    foot=QHBoxLayout();foot.addWidget(label('Space  Play/pause   S/E  Climb start/end   P  Point   L/R  Clip   Q/W  Rest   C/V  Chalk   Delete  Remove selected   Shift+arrows  1 frame   Ctrl+S  Save','muted'));foot.addStretch();foot.addWidget(label('Local processing  •  HTML + CSV comparison','muted'));outer.addLayout(foot)
-    w.usage_label=label('Resource usage: sampling starts when the app opens.','muted');w.usage_label.setToolTip('CPU is this process as a fraction of total logical CPU capacity. Core equivalents are CPU time, not a count of busy physical cores. GPU percentage and device VRAM include other programs. App VRAM may be unavailable under Windows WDDM or for video-decoding contexts.');outer.addWidget(w.usage_label)
+    w.pattern_dashboard=Dashboard();w.main_tabs.addTab(w.pattern_dashboard,"Patterns && efficiency")
+    w.usage_label=label('Resource usage: sampling starts when the app opens.','muted');w.usage_label.setWordWrap(False);w.usage_label.setToolTip('CPU is this process as a fraction of total logical CPU capacity. Core equivalents are CPU time, not a count of busy physical cores. GPU percentage and device VRAM include other programs. App VRAM may be unavailable under Windows WDDM or for video-decoding contexts.');w.statusBar().addPermanentWidget(w.usage_label)
     apply_theme(w,w.settings.value('theme','light'));w.setWindowTitle(APP_NAME+' · v'+__version__)
 
 

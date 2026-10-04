@@ -588,8 +588,11 @@ class Window(LegacyWindow):
         from .design import apply_theme
         apply_theme(self,"light" if self.theme=="dark" else "dark")
     def start_resource_monitor(self):
-        from .resources import ResourceMonitor,format_usage
-        self.resource_monitor=ResourceMonitor(self);self.resource_monitor.sampled.connect(lambda data:self.usage_label.setText(format_usage(data)));self.resource_monitor.start()
+        from .resources import ResourceMonitor
+        self.resource_monitor=ResourceMonitor(self);self.resource_monitor.sampled.connect(self.show_usage);self.resource_monitor.start()
+    def show_usage(self,data):
+        from .resources import format_usage
+        self.usage_label.setText(f"CPU {data['cpu_percent']:.0f}% · RAM {data['ram_mb']/1024:.1f} GB");self.usage_label.setToolTip(format_usage(data))
     def clear_athlete(self):
         if not self.history:return self.error('Open an athlete video first.')
         self.pause();name=self.document()['climber']
