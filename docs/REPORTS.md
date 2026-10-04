@@ -1,0 +1,49 @@
+# Regenerating offline comparison reports
+
+The committed generator contains no private footage or fixed athlete results.
+It accepts either saved label files or an HTML export snapshot. All output is
+local, with embedded SVG charts and no network assets. Age is not used.
+
+## From an exported HTML snapshot
+
+```sh
+uv run --no-sync python -m viewer.report_cli --source artifacts/reports/all-athletes-labelled-v2.html --output artifacts/reports/comparison.html --focus "Athlete A" --route "Blue route 7c+/8a"
+```
+
+Only the supplied HTML is read for measurements. The output includes recovery
+donuts, dedicated rest / chalk / combined recovery percentages, shared REST
+arrivals, eight-clip totals, matched quickdraw comparisons, and focus-athlete
+between-clip gaps after removing marked recovery. Positive median differences
+flag longer gaps. HTML snapshots round values; derived results inherit that
+precision. Source files are not overwritten.
+
+## From saved labels
+
+```sh
+uv run --no-sync python -m viewer.report_cli --labels videos --output artifacts/reports/comparison.html --focus "Athlete A"
+```
+
+`--labels` accepts a folder of `*.labels.json` or one label file. It validates
+the labels and saves a source HTML/CSV snapshot before building the focused
+report. Prefer labels when full stored precision is needed; the overview export
+itself displays rounded values. `--focus` is optional and must identify exactly
+one athlete/attempt in the exported collection. Choose any athlete's name.
+
+The app's **Export all athletes** also produces charts and CSV tables directly.
+CLI outputs include a JSON provenance file with the input SHA256 and a focus-gap
+CSV when focus is requested. Full activity logs and outcome fields are retained
+when present in the source export. Old HTML without an outcome column cannot
+recover fall/top results; save/export again from the viewer to include them.
+
+Combined recovery is the union of dedicated rest and chalking across hands,
+clipped to climb boundaries. Rest/chalk overlaps count once. Gaps subtract that
+union within the gap. Remaining time is unclassified, not verified movement.
+Absent annotations are unknown, not zero; lower rest does not establish why
+an athlete fell. No causal or age-adjusted ability rankings are calculated.
+
+Keep source reports, output reports, labels, cache frames and videos under the
+ignored private directories. Do not upload them to CI or commit them.
+
+## PDF output
+
+Add `--pdf artifacts/reports/comparison.pdf` to either command. PDF generation uses ReportLab locally: vector charts, repeated table headers, page numbers, focus comparisons, recovery percentages and full event tables. PDF files and their telemetry stay outside Git.

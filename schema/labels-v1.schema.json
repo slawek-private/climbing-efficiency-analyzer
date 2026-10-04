@@ -1,0 +1,305 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://climbing-efficiency-analyzer.local/schema/labels-v1",
+  "title": "Manual climbing labels v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "source",
+    "climber",
+    "attempt",
+    "route",
+    "outcome",
+    "start",
+    "end",
+    "events",
+    "open_events",
+    "reviewed",
+    "notes"
+  ],
+  "properties": {
+    "schema_version": {
+      "enum": [
+        "1.0.0",
+        "1.1.0",
+        "1.2.0"
+      ]
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "file",
+        "sha256",
+        "time_base",
+        "first_pts",
+        "frame_count"
+      ],
+      "properties": {
+        "file": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "time_base": {
+          "type": "string"
+        },
+        "first_pts": {
+          "type": "integer"
+        },
+        "frame_count": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "climber": {
+      "type": "string",
+      "minLength": 1
+    },
+    "attempt": {
+      "type": "string",
+      "minLength": 1
+    },
+    "route": {
+      "const": "blue"
+    },
+    "outcome": {
+      "enum": [
+        "unknown",
+        "failed",
+        "completed",
+        "abandoned"
+      ]
+    },
+    "start": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/point"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "end": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/point"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/event"
+      }
+    },
+    "open_events": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/openEvent"
+      }
+    },
+    "reviewed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "left_contacts",
+        "right_contacts",
+        "rests",
+        "clips",
+        "boundaries"
+      ],
+      "properties": {
+        "left_contacts": {
+          "type": "boolean"
+        },
+        "right_contacts": {
+          "type": "boolean"
+        },
+        "left_offwall": {
+          "type": "boolean"
+        },
+        "right_offwall": {
+          "type": "boolean"
+        },
+        "rests": {
+          "type": "boolean"
+        },
+        "clips": {
+          "type": "boolean"
+        },
+        "boundaries": {
+          "type": "boolean"
+        }
+      }
+    },
+    "notes": {
+      "type": "string"
+    },
+    "checkpoints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "point"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "point": {
+            "$ref": "#/$defs/point"
+          },
+          "comment": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "point": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "frame",
+        "pts",
+        "seconds"
+      ],
+      "properties": {
+        "frame": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pts": {
+          "type": "integer"
+        },
+        "seconds": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "hand",
+        "target",
+        "start",
+        "end",
+        "confidence",
+        "notes"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "enum": [
+            "contact",
+            "rest",
+            "clip",
+            "offwall",
+            "chalk"
+          ]
+        },
+        "hand": {
+          "enum": [
+            "left",
+            "right",
+            "none"
+          ]
+        },
+        "target": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "start": {
+          "$ref": "#/$defs/point"
+        },
+        "end": {
+          "$ref": "#/$defs/point"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "openEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "hand",
+        "target",
+        "start",
+        "confidence",
+        "notes"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "contact",
+            "rest",
+            "clip",
+            "offwall",
+            "chalk"
+          ]
+        },
+        "hand": {
+          "enum": [
+            "left",
+            "right",
+            "none"
+          ]
+        },
+        "target": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "start": {
+          "$ref": "#/$defs/point"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}
