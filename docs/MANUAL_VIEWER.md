@@ -118,3 +118,15 @@ HTML comparison exports include recovery-share donut charts, dedicated rest/chal
 
 ### v0.16.0 — macOS, live charts and reusable reports
 The **Charts** tab updates from loaded measurements and highlights a selected athlete. It shares recovery donuts, recovery percentages, REST arrivals and matched clipping charts with report exports. The **PDF** button writes a local vector PDF with repeated headers and page numbers. The report CLI accepts labels or exported HTML; see REPORTS.md. Apple Silicon setup is documented in SETUP_MACOS.md. Windows CUDA tools are optional via the `analysis` extra. Generated reports, source snapshots and historical footage telemetry are excluded from Git.
+
+## Trackpad navigation
+
+On MacBook trackpads, pinch over the video to zoom at the pointer; use two-finger
+scrolling to pan the enlarged image. Two-finger double-tap resets to Fit view
+(if Smart Zoom is enabled in macOS Trackpad settings). Over the time ruler, pinch
+to change the visible time range, two-finger scroll to pan through time, and
+double-tap to show the full video. Ctrl + two-finger vertical scroll also zooms.
+Mouse wheel zoom, Shift+wheel timeline panning, drag panning and the Timeline zoom
+selector remain available. Zero-delta scroll begin/end events do not change zoom.
+These gestures use Qt native gesture/pixel scroll events; real MacBook validation
+is still required.

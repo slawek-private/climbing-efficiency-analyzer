@@ -84,7 +84,7 @@ def build(w):
     ruler=QHBoxLayout();ruler.addWidget(label('Timeline zoom','muted'));w.timeline_zoom=QComboBox()
     for title,seconds in [('Full video',0),('60 seconds',60),('30 seconds',30),('15 seconds',15),('5 seconds',5),('1 second',1)]:w.timeline_zoom.addItem(title,seconds)
     w.timeline_zoom.currentIndexChanged.connect(lambda index:w.precision_scrubber.set_span(w.timeline_zoom.itemData(index)));ruler.addWidget(w.timeline_zoom)
-    ruler.addWidget(button('Centre on playhead',lambda:w.precision_scrubber.set_span(w.precision_scrubber.span),'quiet'));ruler.addStretch();ruler.addWidget(label('Wheel: zoom · Shift+wheel / right drag: pan','muted'));v.addLayout(ruler)
+    ruler.addWidget(button('Centre on playhead',lambda:w.precision_scrubber.set_span(w.precision_scrubber.span),'quiet'));ruler.addStretch();ruler.addWidget(label('Pinch / wheel: zoom · two-finger scroll / right drag: pan','muted'));v.addLayout(ruler)
     def update_zoom(seconds):
         w.timeline_zoom.blockSignals(True);index=w.timeline_zoom.findData(seconds)
         if index<0:

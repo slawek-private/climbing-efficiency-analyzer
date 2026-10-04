@@ -1,6 +1,6 @@
 """Zoomable, PTS-based video ruler. Painting never decodes video."""
 import math
-from PySide6.QtCore import Qt, Signal, QRectF
+from PySide6.QtCore import Qt, Signal, QRectF, QEvent
 from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import QWidget, QToolTip
 
@@ -14,7 +14,7 @@ class PrecisionScrubber(QWidget):
         self.duration=1.;self.position=0.;self.document=None;self.dark=False
         self.span=0.;self.center=0.;self.dragging=False;self.panning=False
         self.setMouseTracking(True)
-        self.setToolTip('Drag to scrub · wheel to zoom · Shift+wheel or right-drag to pan')
+        self.setToolTip('Pinch to zoom · two-finger scroll to pan · double-tap for full video · wheel to zoom')
     def bounds(self):
         span=min(self.duration,self.span) if self.span else self.duration
         span=max(.001,span);a=max(0.,min(self.center-span/2,max(0.,self.duration-span)))
@@ -85,12 +85,29 @@ class PrecisionScrubber(QWidget):
         if self.dragging:
             self.seek.emit(self.seconds_at(event.position().x()));self.dragging=False;self.released.emit()
         self.panning=False
+    def zoom_at(self,factor,x):
+        if factor<=0 or factor==1:return
+        a,b=self.bounds();anchor=self.seconds_at(x);fraction=(anchor-a)/(b-a)
+        span=max(min(.5,self.duration),min(self.duration,(b-a)/factor))
+        self.span=span;self.center=anchor+(0.5-fraction)*span
+        self.update();self.zoomChanged.emit(span)
+    def event(self,event):
+        if event.type()==QEvent.Type.NativeGesture:
+            kind=event.gestureType()
+            if kind==Qt.NativeGestureType.ZoomNativeGesture:self.zoom_at(1+event.value(),event.position().x())
+            elif kind==Qt.NativeGestureType.SmartZoomNativeGesture:self.set_span(0)
+            elif kind not in (Qt.NativeGestureType.BeginNativeGesture,Qt.NativeGestureType.EndNativeGesture):return super().event(event)
+            event.accept();return True
+        return super().event(event)
     def wheelEvent(self,event):
-        a,b=self.bounds();amount=event.angleDelta().y()/120
-        if event.modifiers()&Qt.KeyboardModifier.ShiftModifier:
-            self.center=max(0.,min(self.duration,(a+b)/2-amount*(b-a)*.15));self.update()
+        a,b=self.bounds();pixels=event.pixelDelta()
+        if not pixels.isNull() and not event.modifiers()&Qt.KeyboardModifier.ControlModifier:
+            distance=pixels.x() if pixels.x() else pixels.y()
+            self.center=max(0.,min(self.duration,(a+b)/2-distance/max(1,self.width()-24)*(b-a)))
+            self.update()
+        elif event.modifiers()&Qt.KeyboardModifier.ShiftModifier:
+            self.center=max(0.,min(self.duration,(a+b)/2-event.angleDelta().y()/120*(b-a)*.15));self.update()
         else:
-            anchor=self.seconds_at(event.position().x());fraction=(anchor-a)/(b-a)
-            span=max(min(.5,self.duration),min(self.duration,(b-a)*(.75**amount)))
-            self.span=span;self.center=anchor+(0.5-fraction)*span;self.update();self.zoomChanged.emit(span)
+            amount=pixels.y()/100 if not pixels.isNull() else event.angleDelta().y()/120
+            self.zoom_at((1/.75)**max(-10,min(10,amount)),event.position().x())
         event.accept()

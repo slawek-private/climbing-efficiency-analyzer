@@ -5,7 +5,7 @@ import json
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import Qt,QThread,Signal,QTimer,QElapsedTimer
+from PySide6.QtCore import Qt,QThread,Signal,QTimer,QElapsedTimer,QEvent
 from PySide6.QtGui import QImage,QPixmap,QKeySequence,QShortcut,QPainter,QColor,QPen
 from PySide6.QtWidgets import (QApplication,QMainWindow,QWidget,QVBoxLayout,QHBoxLayout,QGridLayout,
     QPushButton,QLabel,QSlider,QComboBox,QSpinBox,QDoubleSpinBox,QLineEdit,QCheckBox,
@@ -33,6 +33,8 @@ class ImageView(QGraphicsView):
         super().__init__();self.canvas=QGraphicsScene(self);self.setScene(self.canvas)
         self.item=self.canvas.addPixmap(QPixmap());self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
         self.setBackgroundBrush(QColor("#101b2b"));self.auto_fit=True
+        self.viewport().installEventFilter(self)
+        self.setToolTip("Pinch to zoom · two-finger scroll to pan · double-tap to fit · wheel to zoom")
     def display(self,rgb):
         image=QImage(rgb.data,rgb.shape[1],rgb.shape[0],rgb.strides[0],QImage.Format.Format_RGB888).copy()
         self.item.setPixmap(QPixmap.fromImage(image));self.canvas.setSceneRect(self.item.boundingRect())
@@ -42,9 +44,35 @@ class ImageView(QGraphicsView):
     def resizeEvent(self,event):
         super().resizeEvent(event)
         if self.auto_fit:self.fit()
+    def zoom_at(self,factor,position):
+        if factor<=0 or factor==1:return
+        current=self.transform().m11()
+        factor=max(.02,min(30,current*factor))/max(current,1e-12)
+        before=self.mapToScene(position.toPoint())
+        self.auto_fit=False
+        self.scale(factor,factor)
+        after=self.mapToScene(position.toPoint())
+        offset=after-before
+        self.translate(offset.x(),offset.y())
+    def eventFilter(self,watched,event):
+        if watched is self.viewport() and event.type()==QEvent.Type.NativeGesture:
+            kind=event.gestureType()
+            if kind==Qt.NativeGestureType.ZoomNativeGesture:
+                self.zoom_at(1+event.value(),event.position())
+            elif kind==Qt.NativeGestureType.SmartZoomNativeGesture:self.fit()
+            elif kind not in (Qt.NativeGestureType.BeginNativeGesture,Qt.NativeGestureType.EndNativeGesture):
+                return super().eventFilter(watched,event)
+            event.accept();return True
+        return super().eventFilter(watched,event)
     def wheelEvent(self,event):
-        self.auto_fit=False;factor=1.2 if event.angleDelta().y()>0 else 1/1.2
-        if .02<self.transform().m11()*factor<30:self.scale(factor,factor)
+        pixels=event.pixelDelta()
+        if not pixels.isNull() and not event.modifiers()&Qt.KeyboardModifier.ControlModifier:
+            self.horizontalScrollBar().setValue(self.horizontalScrollBar().value()-pixels.x())
+            self.verticalScrollBar().setValue(self.verticalScrollBar().value()-pixels.y())
+        else:
+            amount=pixels.y()/100 if not pixels.isNull() else event.angleDelta().y()/120
+            self.zoom_at(1.2**max(-10,min(10,amount)),event.position())
+        event.accept()
 
 
 class Timeline(QWidget):
