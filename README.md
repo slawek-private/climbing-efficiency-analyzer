@@ -3,6 +3,8 @@
 Fully local human-assisted climbing measurements for Windows and Apple Silicon macOS.
 Automatic inference remains a feasibility experiment, not a validated autonomous pipeline.
 
+![Climb Studio workspace (synthetic demo data)](docs/screenshots/workspace-dark.png)
+
 ## Screenshots
 
 All screenshots below use generated pixels and fictional measurements. No real
@@ -65,3 +67,7 @@ Videos, images, labels, athlete telemetry, caches, generated reports and
 historical footage-specific M0 reports remain local and ignored by Git.
 Only reusable source, schemas, synthetic tests, lockfiles and setup documentation
 are committed. No telemetry, footage uploads or external assets are required.
+
+## License
+
+[MIT](LICENSE)
