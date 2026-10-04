@@ -3,6 +3,20 @@
 Fully local human-assisted climbing measurements for Windows and Apple Silicon macOS.
 Automatic inference remains a feasibility experiment, not a validated autonomous pipeline.
 
+## Screenshots
+
+All screenshots below use generated pixels and fictional measurements. No real
+climbers, footage or telemetry are included.
+
+![Manual workspace in dark mode](docs/screenshots/workspace-dark.png)
+![Live comparison charts](docs/screenshots/comparison-charts.png)
+
+[Light workspace](docs/screenshots/workspace-light.png) ·
+[Athlete comparison table](docs/screenshots/athlete-comparison.png)
+
+For another coding model, start with [AGENTS.md](AGENTS.md) and the
+[installation handoff](docs/INSTALL_FOR_AGENTS.md).
+
 ## Run the viewer
 
 Install uv 0.8.22 and Python 3.12.11, then:
