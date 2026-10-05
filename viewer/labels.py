@@ -1,14 +1,27 @@
 """Manual labels and interval metrics. No machine predictions are inferred."""
 import copy
 import json
+import sys
 from fractions import Fraction
 from pathlib import Path
 from uuid import uuid4
 
 from jsonschema import Draft202012Validator
 
-ROOT = Path(__file__).resolve().parents[1]
-SCHEMA = json.loads((ROOT / "schema" / "labels-v1.schema.json").read_text(encoding="utf-8"))
+def data_root():
+    """Source checkouts keep private data in the repository's ignored folders; installed apps cannot
+    write inside their bundle, so they use Documents/Climb Studio."""
+    if not getattr(sys, "frozen", False):
+        return RESOURCES
+    from PySide6.QtCore import QStandardPaths
+    documents = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DocumentsLocation)
+    return Path(documents or Path.home()) / "Climb Studio"
+
+
+# Bundled read-only files (PyInstaller unpacks them to sys._MEIPASS) or the source checkout.
+RESOURCES = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[1]))
+ROOT = data_root()
+SCHEMA = json.loads((RESOURCES / "schema" / "labels-v1.schema.json").read_text(encoding="utf-8"))
 VALIDATOR = Draft202012Validator(SCHEMA)
 
 

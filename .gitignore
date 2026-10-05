@@ -33,3 +33,6 @@ __pycache__/
 !/docs/screenshots/workspace-dark.png
 !/docs/screenshots/athlete-comparison.png
 !/docs/screenshots/comparison-charts.png
+
+# Installer builds
+/build/

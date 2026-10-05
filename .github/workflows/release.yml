@@ -1,0 +1,77 @@
+name: Release installers
+# Push a tag matching viewer/version.py (e.g. v0.17.0) to build, self-check and publish
+# a GitHub Release. Run manually to build installers as workflow artifacts without releasing.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      QT_QPA_PLATFORM: offscreen
+      PYTHONUTF8: '1'
+      UV_NO_PROGRESS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.8.22'
+          enable-cache: true
+      - run: uv python install 3.12.11
+      - run: uv sync --locked --group build
+      - run: uv run --no-sync python -m pytest viewer -q
+      - name: Install Inno Setup
+        if: runner.os == 'Windows'
+        run: if (-not (Get-Command iscc -ErrorAction SilentlyContinue)) { choco install innosetup -y --no-progress }
+      # Builds with PyInstaller, runs the bundled app's --self-check, then packages .dmg / setup .exe.
+      - run: uv run --no-sync python packaging/build.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installer-${{ runner.os }}
+          path: build/release/*
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag must match app and project versions
+        run: |
+          app=$(sed -n "s/^__version__ = '\(.*\)'/\1/p" viewer/version.py)
+          project=$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml)
+          [ "v$app" = "$GITHUB_REF_NAME" ] && [ "$app" = "$project" ] || { echo "Tag $GITHUB_REF_NAME, viewer/version.py $app, pyproject.toml $project"; exit 1; }
+      - uses: actions/download-artifact@v4
+        with:
+          path: installers
+          merge-multiple: true
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > notes.md <<'EOF'
+          ## Install
+
+          **macOS (Apple Silicon, macOS 14+):** open the `.dmg` and drag **Climb Studio** to Applications.
+          The app is not notarised by Apple yet. On first launch macOS blocks it: open
+          **System Settings → Privacy & Security** and choose **Open Anyway**, or run
+          `xattr -dr com.apple.quarantine "/Applications/Climb Studio.app"`.
+
+          **Windows 10/11 (x64):** run the `setup.exe`. It installs for the current user without
+          administrator rights. The installer is not code-signed yet, so SmartScreen may show
+          **More info → Run anyway**.
+
+          Measurements, caches and exports are saved locally in `Documents/Climb Studio`.
+          Nothing is uploaded.
+          EOF
+          gh release create "$GITHUB_REF_NAME" installers/* --title "Climb Studio ${GITHUB_REF_NAME#v}" --notes-file notes.md --generate-notes

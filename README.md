@@ -19,7 +19,17 @@ climbers, footage or telemetry are included.
 For another coding model, start with [AGENTS.md](AGENTS.md) and the
 [installation handoff](docs/INSTALL_FOR_AGENTS.md).
 
-## Run the viewer
+## Install
+
+Download the latest installer from
+[Releases](https://github.com/slawek-private/climbing-efficiency-analyzer/releases/latest):
+`Climb-Studio-…-macOS-arm64.dmg` (Apple Silicon, macOS 14+) or
+`Climb-Studio-…-Windows-x64-setup.exe` (Windows 10/11). Builds are not yet
+signed or notarised: on macOS use **System Settings → Privacy & Security → Open
+Anyway** on first launch; on Windows choose **More info → Run anyway**. The
+installed app keeps measurements, caches and exports in `Documents/Climb Studio`.
+
+## Run from source
 
 Install uv 0.8.22 and Python 3.12.11, then:
 
@@ -49,6 +59,19 @@ An existing HTML snapshot is also accepted with `--source` instead of `--labels`
 [Report generation](docs/REPORTS.md) describes precision, provenance and limitations.
 Combined recovery includes chalking, merging overlaps once. Missing data is
 unknown. Rest percentages do not prove why an athlete fell.
+
+## Build installers
+
+```sh
+uv sync --locked --group build
+uv run --no-sync python packaging/build.py   # writes build/release/
+```
+
+Builds the installer for the current platform with PyInstaller, runs the bundled
+app's `--self-check`, then packages a `.dmg` (macOS) or Inno Setup `setup.exe`
+(Windows, needs Inno Setup 6). Pushing a tag that matches `viewer/version.py`
+(e.g. `v0.17.0`) runs `.github/workflows/release.yml`, which builds both on CI
+and publishes a GitHub Release.
 
 ## Tests and optional Windows inference
 

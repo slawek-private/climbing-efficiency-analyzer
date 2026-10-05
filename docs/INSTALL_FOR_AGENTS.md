@@ -1,7 +1,9 @@
 # Installation handoff for other coding models
 
-This is a runnable source checkout, not a packaged macOS `.app` or Windows
-installer. Do not invent a packaging/build command. The manual viewer requires
+End users can install from GitHub Releases (macOS `.dmg`, Windows `setup.exe`).
+This guide covers the runnable source checkout. Installers are built only by
+`packaging/build.py` and the release workflow; do not invent other packaging
+commands. The manual viewer requires
 no model weights, CUDA, WSL, cloud service or API key.
 
 ## 1. Inspect before executing
