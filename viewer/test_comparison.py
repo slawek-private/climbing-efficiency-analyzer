@@ -96,3 +96,19 @@ def test_timestamped_comments_roundtrip_and_export(tmp_path):
     html=export_comparison([d],tmp_path/'notes.html').read_text(encoding='utf-8')
     assert 'Foot slipped &lt;here&gt;' in html
     assert 'Foot slipped <here>' in (tmp_path/'notes-points.csv').read_text(encoding='utf-8-sig')
+
+
+def test_clip_method_counts_validation_and_export(tmp_path):
+    d=empty_labels(source());d.update(start=point(1),end=point(11),outcome='failed')
+    d['events']=[event('clip','left',2,3,1),event('clip','right',4,5,2),event('clip','left',6,7,3)]
+    s=rows([d])[0][0];assert s['clip_mouth_count'] is None and s['clip_direct_count'] is None
+    d['events'][0]['clip_method']='mouth';d['events'][1]['clip_method']='direct'
+    s=rows([d])[0][0];assert (s['clip_mouth_count'],s['clip_direct_count'])==(1,1)
+    save(d,tmp_path/'a.labels.json');assert load(tmp_path/'a.labels.json')['events'][0]['clip_method']=='mouth'
+    export_comparison([d],tmp_path/'all.html')
+    activities=(tmp_path/'all-activities.csv').read_text(encoding='utf-8-sig')
+    assert 'clip_method' in activities and 'mouth' in activities and 'direct' in activities
+    bad=copy.deepcopy(d);bad['events'][0]['clip_method']='teeth'
+    with pytest.raises(Exception):validate(bad)
+    bad=copy.deepcopy(d);bad['events'].append(event('rest','left',8,9));bad['events'][-1]['clip_method']='mouth'
+    with pytest.raises(ValueError):validate(bad)

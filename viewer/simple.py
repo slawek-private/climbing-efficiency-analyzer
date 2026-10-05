@@ -16,6 +16,7 @@ from .video import VideoReader
 from .discovery import matching_labels
 from .workspace import Workspace
 from .collection import CollectionWorker
+from .platform_runtime import GPU_BACKEND
 
 class SharedPointSelector(QComboBox):
     def __init__(self):
@@ -110,13 +111,16 @@ class Window(LegacyWindow):
         if pending:
             if now['seconds']<=pending['start']['seconds']:
                 self.statusBar().showMessage('Advance the video before stopping this timer.',4000);return
-            d['events'].append(make_event(pending,now));d['open_events'].remove(pending)
+            closed=make_event(pending,now)
+            if kind=='clip' and self.clip_method.currentData():closed['clip_method']=self.clip_method.currentData()
+            d['events'].append(closed);d['open_events'].remove(pending)
         else:
             if any(e['kind']==kind and e['hand']==hand and e['start']['seconds']<=now['seconds']<e['end']['seconds'] for e in d['events']):
                 self.statusBar().showMessage('This hand already has a marked interval here. Edit it in Recorded.',5000);return
             d['open_events'].append({'kind':kind,'hand':hand,'target':self.draw.value() if kind=='clip' else None,'start':now,'confidence':1,'notes':''})
         d['reviewed']={k:False for k in d['reviewed']}
         if self.commit(d) and pending and kind=='clip':
+            self.clip_method.setCurrentIndex(0)
             self.draw.setValue(min(self.draw.maximum(),max(self.draw.value(),(pending['target'] or 1)+1)));self.remember_current()
     def stop_legacy_rest(self):
         if not self.ready_to_mark():return
@@ -136,7 +140,7 @@ class Window(LegacyWindow):
         d=self.document();self.table.blockSignals(True);self.table.setRowCount(len(self.visible_events))
         self.table.setHorizontalHeaderLabels(['Type','Hand','Hold/draw','Climb start s','Climb stop s','Duration s'])
         for row,e in enumerate(self.visible_events):
-            for col,value in enumerate(({'contact':'Hold','rest':'Rest','clip':'Clip','offwall':'Off-wall','chalk':'Chalk'}[e['kind']],e['hand'],e['target'] or '—',f"{e['start']['seconds']-d['start']['seconds']:.3f}" if d['start'] else 'Start missing',f"{e['end']['seconds']-d['start']['seconds']:.3f}" if d['start'] else 'Start missing',f"{e['end']['seconds']-e['start']['seconds']:.3f}")):
+            for col,value in enumerate(({'contact':'Hold','rest':'Rest','clip':'Clip','offwall':'Off-wall','chalk':'Chalk'}[e['kind']],e['hand'],str(e['target'] or '—')+{'mouth':' · mouth','direct':' · direct'}.get(e.get('clip_method'),''),f"{e['start']['seconds']-d['start']['seconds']:.3f}" if d['start'] else 'Start missing',f"{e['end']['seconds']-d['start']['seconds']:.3f}" if d['start'] else 'Start missing',f"{e['end']['seconds']-e['start']['seconds']:.3f}")):
                 item=QTableWidgetItem(str(value));item.setToolTip(f"Video time: {e['start']['seconds']:.3f}–{e['end']['seconds']:.3f} s");self.table.setItem(row,col,item)
         self.table.blockSignals(False)
         self.point_rows=sorted(d.get('checkpoints',[]),key=lambda p:p['point']['seconds']);self.points_table.setRowCount(len(self.point_rows))
@@ -146,7 +150,9 @@ class Window(LegacyWindow):
     def set_frame_step(self,value):
         self.settings.setValue('frame_step',value)
         if hasattr(self,'step_back_button'):self.step_back_button.setText(f'← {value} frames');self.step_forward_button.setText(f'{value} frames →')
+    def sync_active(self):return hasattr(self,'sync_view') and self.main_tabs.currentWidget() is self.sync_view
     def step(self,delta,single=False):
+        if self.sync_active():return self.sync_view.step(delta*(1 if single else self.frame_step.value())/30)
         if not self.reader:return
         self.pause();base=getattr(self,'pending_scrub',self.decode_requested if self.decode_seek and self.decode_future is not None else self.frame_number)
         self.scrub_timer.stop()
@@ -221,6 +227,7 @@ class Window(LegacyWindow):
     def start_playback(self):
         self.play_after_decode=False;self.playing=True;self.reset_clock();self.timer.start();self.play_button.setText('Pause · Space')
     def toggle_play(self):
+        if self.sync_active():return self.sync_view.toggle_play()
         if not self.reader:return
         if self.playing or self.play_after_decode:self.pause();return
         self.finish_scrub()
@@ -278,7 +285,9 @@ class Window(LegacyWindow):
             except Exception:pass
             self.decode_future=None
         super().closeEvent(event)
-        if event.isAccepted():self.decoder.shutdown(wait=True)
+        if event.isAccepted():
+            self.decoder.shutdown(wait=True)
+            if hasattr(self,'sync_view'):self.sync_view.shutdown()
     def refresh_live(self):
         if not self.simple_ready:return
         d=self.document();now=self.reader.times[self.frame_number] if self.reader else 0
@@ -398,7 +407,7 @@ class Window(LegacyWindow):
     def index_ready(self,index):
         self.progress.hide()
         try:
-            self.reader=self.open_video_reader(index);self.decoder_choice.blockSignals(True);self.decoder_choice.setCurrentIndex(1 if self.reader.backend=='cuda' else 0);self.decoder_choice.blockSignals(False);self.history=History(empty_labels(index['source']));self.saved=copy.deepcopy(self.document());self.slider.setRange(0,len(self.reader.times)-1);self.frame_number=0
+            self.reader=self.open_video_reader(index);self.decoder_choice.blockSignals(True);self.decoder_choice.setCurrentIndex(1 if self.reader.backend==GPU_BACKEND else 0);self.decoder_choice.blockSignals(False);self.history=History(empty_labels(index['source']));self.saved=copy.deepcopy(self.document());self.slider.setRange(0,len(self.reader.times)-1);self.frame_number=0
             folders=[self.video_path.parent,ROOT/'videos',ROOT/'artifacts'/'labels']
             folder=self.settings.value('labels_folder','')
             if folder:folders.append(Path(folder))
@@ -471,17 +480,17 @@ class Window(LegacyWindow):
             replacement=open_preview(ROOT/'artifacts'/'preview-cache',self.reader.index)
             if replacement:self.preview_ready(self.reader.index['source']['sha256']);replacement.close()
             else:
-                self.decoder_choice.blockSignals(True);self.decoder_choice.setCurrentIndex(1 if self.reader.backend=='cuda' else 0);self.decoder_choice.blockSignals(False);self.prepare_preview()
+                self.decoder_choice.blockSignals(True);self.decoder_choice.setCurrentIndex(1 if self.reader.backend==GPU_BACKEND else 0);self.decoder_choice.blockSignals(False);self.prepare_preview()
             return
         if self.reader.backend=='preview':return
         if self.decode_future is not None:
-            self.statusBar().showMessage('Pause and wait for the current frame before switching decoder.',5000);self.decoder_choice.blockSignals(True);self.decoder_choice.setCurrentIndex(1 if self.reader.backend=='cuda' else 0);self.decoder_choice.blockSignals(False);return
-        self.pause();old=self.reader;backend='cuda' if index==1 else 'cpu'
+            self.statusBar().showMessage('Pause and wait for the current frame before switching decoder.',5000);self.decoder_choice.blockSignals(True);self.decoder_choice.setCurrentIndex(1 if self.reader.backend==GPU_BACKEND else 0);self.decoder_choice.blockSignals(False);return
+        self.pause();old=self.reader;backend=GPU_BACKEND if index==1 else 'cpu'
         try:
             replacement=VideoReader(self.video_path,old.index,backend);replacement.frame(self.frame_number)
         except Exception as e:
             if 'replacement' in locals():replacement.close()
-            self.decoder_choice.blockSignals(True);self.decoder_choice.setCurrentIndex(1 if old.backend=='cuda' else 0);self.decoder_choice.blockSignals(False);self.error('Decoder unavailable: '+str(e));return
+            self.decoder_choice.blockSignals(True);self.decoder_choice.setCurrentIndex(1 if old.backend==GPU_BACKEND else 0);self.decoder_choice.blockSignals(False);self.error('Decoder unavailable: '+str(e));return
         self.reader=replacement;self.settings.setValue("decoder_backend",backend);old.close();self.show_frame(self.frame_number)
     def save_labels(self):
         if self.history and self.video_path and self.label_path is None:
@@ -559,7 +568,7 @@ class Window(LegacyWindow):
         self.comparison_activity_table.setRowCount(len(activity_rows))
         for row,values in enumerate(activity_rows):
             for col,value in enumerate(values):self.comparison_activity_table.setItem(row,col,QTableWidgetItem('Start missing' if value is None else f'{value:.2f}' if isinstance(value,float) else str(value)))
-        columns=[('Athlete','athlete'),('Result','outcome'),('Climb (s)','climb_seconds'),('Total rest incl. chalk (s)','total_rest_marked_seconds'),('Total rest episodes','total_rest_marked_count'),('Total rest share','total_marked_rest_share'),('Dedicated rest (s)','rest_marked_seconds'),('Dedicated rest count','rest_marked_count'),('Clip (s)','clip_marked_seconds'),('Clip count','clip_marked_count'),('Chalk count','chalk_marked_count'),('Chalk (s)','chalk_marked_seconds'),('Left chalk (s)','left_chalk_marked_seconds'),('Right chalk (s)','right_chalk_marked_seconds'),('Left rest (s)','left_rest_marked_seconds'),('Right rest (s)','right_rest_marked_seconds'),('Left clip (s)','left_clip_marked_seconds'),('Right clip (s)','right_clip_marked_seconds')]
+        columns=[('Athlete','athlete'),('Result','outcome'),('Climb (s)','climb_seconds'),('Total rest incl. chalk (s)','total_rest_marked_seconds'),('Total rest episodes','total_rest_marked_count'),('Total rest share','total_marked_rest_share'),('Dedicated rest (s)','rest_marked_seconds'),('Dedicated rest count','rest_marked_count'),('Clip (s)','clip_marked_seconds'),('Clip count','clip_marked_count'),('Mouth clips','clip_mouth_count'),('Direct clips','clip_direct_count'),('Chalk count','chalk_marked_count'),('Chalk (s)','chalk_marked_seconds'),('Left chalk (s)','left_chalk_marked_seconds'),('Right chalk (s)','right_chalk_marked_seconds'),('Left rest (s)','left_rest_marked_seconds'),('Right rest (s)','right_rest_marked_seconds'),('Left clip (s)','left_clip_marked_seconds'),('Right clip (s)','right_clip_marked_seconds')]
         names=sorted({p['point'] for p in points});headers=[c[0] for c in columns]+[name+' (s)' for name in names]
         table=self.comparison_table;table.setColumnCount(len(headers));table.setHorizontalHeaderLabels(headers);table.setRowCount(len(overview));self.comparison_rows=overview
         for row,summary in enumerate(overview):

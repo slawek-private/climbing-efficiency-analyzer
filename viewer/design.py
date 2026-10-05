@@ -3,6 +3,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont,QColor
 from PySide6.QtWidgets import (QWidget,QVBoxLayout,QHBoxLayout,QGridLayout,QLabel,QPushButton,QFrame,QTabWidget,QSplitter,QScrollArea,QHeaderView,QAbstractItemView,QComboBox,QTableWidget,QSpinBox,QMessageBox)
 from .version import APP_NAME,__version__
+from .platform_runtime import GPU_LABEL
 
 STYLE='''
 QWidget { font-family: "Segoe UI", "Arial"; font-size: 13px; color: #25334a; }
@@ -106,7 +107,7 @@ def build(w):
         w.timeline_zoom.setCurrentIndex(index);w.timeline_zoom.blockSignals(False)
     w.precision_scrubber.zoomChanged.connect(update_zoom)
     w.preview_status=label('Original video · prepare once for fast seeking','muted');w.preview_status.setWordWrap(False);ruler.addWidget(w.preview_status);w.preview_button=button('Prepare smooth preview',w.prepare_preview);ruler.addWidget(w.preview_button)
-    w.decoder_choice=QComboBox();w.decoder_choice.addItems(['CPU · low latency','NVIDIA GPU · CUDA','Prepared preview · fast seek']);w.decoder_choice.setToolTip('Video decoder');w.decoder_choice.currentIndexChanged.connect(w.change_decoder);ruler.addWidget(w.decoder_choice);v.addLayout(ruler);split.addWidget(video)
+    w.decoder_choice=QComboBox();w.decoder_choice.addItems(['CPU · low latency',GPU_LABEL,'Prepared preview · fast seek']);w.decoder_choice.setToolTip('Video decoder');w.decoder_choice.currentIndexChanged.connect(w.change_decoder);ruler.addWidget(w.decoder_choice);v.addLayout(ruler);split.addWidget(video)
     panel=QWidget();panel.setObjectName('page');measure=QVBoxLayout(panel);measure.setContentsMargins(12,10,12,10);measure.setSpacing(7);panel.setMinimumWidth(450);measurement_scroll=QScrollArea();measurement_scroll.setWidgetResizable(True);measurement_scroll.setMinimumWidth(475);measurement_scroll.setWidget(panel);split.addWidget(measurement_scroll);split.setSizes([870,500]);w.workspace_tabs=None
     line=QHBoxLayout();line.addWidget(w.climber,1);w.climber.setPlaceholderText('Athlete');line.addWidget(label('Attempt','muted'));w.attempt.setMaximumWidth(55);line.addWidget(w.attempt);line.addWidget(button('Clear this athlete',w.clear_athlete,'quiet'));measure.addLayout(line)
     line=QHBoxLayout();line.addWidget(button('Climb start · S',w.set_start,'start'));line.addWidget(button('×',lambda:w.clear_boundary('start'),'quiet'));line.addWidget(button('Climb end · E',w.set_failure,'stop'));line.addWidget(button('×',lambda:w.clear_boundary('end'),'quiet'));measure.addLayout(line)
@@ -114,7 +115,9 @@ def build(w):
     line=QHBoxLayout();line.addWidget(w.point_name,1);line.addWidget(button('Mark point · P',w.add_point,'primary'));line.addWidget(button('Rename',w.rename_point,'quiet'));line.addWidget(button('Delete',w.delete_point,'quiet'));measure.addLayout(line)
     line=QHBoxLayout();line.addWidget(button('Comment at current frame',w.comment_at_frame,'quiet'));line.addWidget(button('Edit selected comment',w.edit_point_comment,'quiet'));measure.addLayout(line)
     w.points_table.setMinimumHeight(0);w.points_table.setMaximumHeight(75);measure.addWidget(w.points_table)
-    line=QHBoxLayout();line.addWidget(label('REST · CLIP · CHALK','muted'));line.addStretch();line.addWidget(label('Draw #','muted'));w.draw.setMaximumWidth(65);line.addWidget(w.draw);measure.addLayout(line)
+    line=QHBoxLayout();line.addWidget(label('REST · CLIP · CHALK','muted'));line.addStretch();w.clip_method=QComboBox()
+    for title,value in [('Clip method: not set',None),('Rope to mouth',"mouth"),('Direct · no mouth',"direct")]:w.clip_method.addItem(title,value)
+    w.clip_method.setToolTip('Recorded on the clip when its timer stops, then resets.\nRope to mouth: rope pulled up and held in the mouth before clipping.\nDirect: moved to a favourable position and clipped without the mouth.');line.addWidget(w.clip_method);line.addWidget(label('Draw #','muted'));w.draw.setMaximumWidth(65);line.addWidget(w.draw);measure.addLayout(line)
     grid=QGridLayout();grid.setSpacing(5);w.hand_timer_buttons={};w.hand_timer_status={}
     for row,kind in enumerate(('clip','rest','chalk')):
         for col,hand in enumerate(('left','right')):
@@ -136,6 +139,12 @@ def build(w):
     w.comparison_charts=ComparisonCharts();w.main_tabs.addTab(w.comparison_charts,'Charts')
     from .dashboard import Dashboard
     w.pattern_dashboard=Dashboard();w.main_tabs.addTab(w.pattern_dashboard,"Patterns && efficiency")
+    from .sync_view import SyncView
+    w.sync_view=SyncView(w);w.main_tabs.addTab(w.sync_view,'Synchronized')
+    def tab_changed(index):
+        if w.main_tabs.widget(index) is w.sync_view:w.pause();w.sync_view.activate()
+        else:w.sync_view.pause();w.sync_view.timer.stop()
+    w.main_tabs.currentChanged.connect(tab_changed)
     w.usage_label=label('Resource usage: sampling starts when the app opens.','muted');w.usage_label.setWordWrap(False);w.usage_label.setToolTip('CPU is this process as a fraction of total logical CPU capacity. Core equivalents are CPU time, not a count of busy physical cores. GPU percentage and device VRAM include other programs. App VRAM may be unavailable under Windows WDDM or for video-decoding contexts.');w.statusBar().addPermanentWidget(w.usage_label)
     apply_theme(w,w.settings.value('theme','light'));w.setWindowTitle(APP_NAME+' · v'+__version__)
 

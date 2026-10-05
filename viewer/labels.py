@@ -45,6 +45,8 @@ def validate(document):
         if event["kind"] == "rest" and event["hand"] != "none" and document["schema_version"] == "1.0.0":
             raise ValueError("Hand-specific rest intervals require label schema 1.1.0")
         if event["kind"] == "chalk" and document["schema_version"] != "1.2.0":raise ValueError("Chalking requires schema 1.2.0")
+        if "clip_method" in event and event["kind"] != "clip":
+            raise ValueError("Clip method applies only to clip events")
         if event["kind"] == "contact" and event["target"] is None:
             raise ValueError("Contact requires a blue hold number")
     keys=[(e['kind'],e['hand']) for e in document['open_events']]

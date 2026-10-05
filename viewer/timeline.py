@@ -22,7 +22,7 @@ class EventTimeline(QWidget):
                 start=max(a,e['start']['seconds']);end=min(b,e['end']['seconds'])
                 if end<=start:continue
                 x=66+(start-a)/span*width;w=max(3,(end-start)/span*width);p.fillRect(int(x),y,int(w),16,QColor('#377deb' if kind=='clip' else '#a16cda' if kind=='chalk' else '#1d9874'));p.setPen(QColor('white'))
-                if kind=='clip':p.drawText(int(x)+2,y+12,'#'+str(e['target'] or '?'))
+                if kind=='clip':p.drawText(int(x)+2,y+12,'#'+str(e['target'] or '?')+{'mouth':' M','direct':' D'}.get(e.get('clip_method'),''))
                 self.hits.append((x,y,w,e))
         if self.document:
             for point in self.document.get('checkpoints',[]):

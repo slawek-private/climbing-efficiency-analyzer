@@ -112,10 +112,15 @@ class EventDialog(QDialog):
         self.start.setValue(event["start"]["frame"]);self.end.setValue(event["end"]["frame"])
         self.confidence=QDoubleSpinBox();self.confidence.setRange(0,1);self.confidence.setSingleStep(.1);self.confidence.setValue(event["confidence"])
         self.notes=QLineEdit(event["notes"])
-        for label,control in (("Kind",self.kind),("Hand",self.hand),("Hold / quickdraw number",self.target),("Start frame",self.start),("End frame (release / completion)",self.end),("Subjective confidence",self.confidence),("Notes",self.notes)):form.addRow(label,control)
+        self.clip_method=QComboBox()
+        for title,value in (("Not set",None),("Rope pulled to mouth","mouth"),("Direct · no mouth","direct")):self.clip_method.addItem(title,value)
+        self.clip_method.setCurrentIndex(self.clip_method.findData(event.get("clip_method")))
+        for label,control in (("Kind",self.kind),("Hand",self.hand),("Hold / quickdraw number",self.target),("Clip method",self.clip_method),("Start frame",self.start),("End frame (release / completion)",self.end),("Subjective confidence",self.confidence),("Notes",self.notes)):form.addRow(label,control)
         hint=QLabel("Frames are zero-based. Start included, end excluded.\nUse the player and current frame display to locate boundaries.");form.addRow(hint)
         buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Ok|QDialogButtonBox.StandardButton.Cancel);buttons.accepted.connect(self.accept);buttons.rejected.connect(self.reject);form.addRow(buttons)
     def result_event(self,event):
+        event={k:v for k,v in event.items() if k!="clip_method"}
+        if self.kind.currentText()=="clip" and self.clip_method.currentData():event["clip_method"]=self.clip_method.currentData()
         return {**event,"kind":self.kind.currentText(),"hand":self.hand.currentText(),"target":self.target.value() or None,
                 "start":self.reader.point(self.start.value()),"end":self.reader.point(self.end.value()),
                 "confidence":self.confidence.value(),"notes":self.notes.text()}

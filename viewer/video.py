@@ -58,18 +58,19 @@ def index_video(path, progress=lambda value: None, cancelled=lambda: False, cach
 class VideoReader:
     def __init__(self,path,index,backend="auto"):
         if backend=='auto':
+            from .platform_runtime import GPU_BACKEND,gpu_candidate
             with av.open(str(path)) as probe:
-                stream=probe.streams.video[0];candidate=max(stream.codec_context.width,stream.codec_context.height)>=3840 and stream.codec_context.name in ('hevc','h264')
+                stream=probe.streams.video[0];candidate=gpu_candidate(stream.codec_context.name,stream.codec_context.width,stream.codec_context.height)
             if candidate:
                 try:
-                    self.__init__(path,index,'cuda');self.frame(0);return
+                    self.__init__(path,index,GPU_BACKEND);self.frame(0);return
                 except Exception:
                     if hasattr(self,'container'):self.container.close()
             self.__init__(path,index,'cpu');return
         options={}
-        if backend=="cuda":
+        if backend in ("cuda","videotoolbox"):
             from av.codec.hwaccel import HWAccel
-            options["hwaccel"]=HWAccel("cuda",allow_software_fallback=False)
+            options["hwaccel"]=HWAccel(backend,allow_software_fallback=False)
         self.container = av.open(str(path),**options)
         self.backend=backend
         self.stream = self.container.streams.video[0]

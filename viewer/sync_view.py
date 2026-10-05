@@ -1,0 +1,156 @@
+"""Side-by-side playback of several videos on one clock aligned at a shared marked moment."""
+import bisect
+import math
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+from PySide6.QtCore import Qt, QThread, Signal, QTimer, QElapsedTimer
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton, QComboBox, QSlider, QFrame
+from .app import ImageView
+from .labels import ROOT
+from .video import index_video, VideoReader
+
+SPEEDS = (.25, .5, 1, 1.5, 2)
+
+
+def anchor_seconds(document, anchor):
+    """Video time of the alignment moment: climb start, or the first arrival at a named point."""
+    if anchor == 'start':
+        return document['start']['seconds'] if document['start'] else None
+    arrivals = [p['point']['seconds'] for p in document.get('checkpoints', []) if p['name'].casefold() == anchor.casefold()]
+    return min(arrivals, default=None)
+
+
+def frame_at(times, seconds):
+    """Frame shown at a video time: the last frame whose timestamp is not after it."""
+    return max(0, min(len(times)-1, bisect.bisect_right(times, seconds)-1))
+
+
+class IndexAll(QThread):
+    indexed = Signal(str, object)
+    failed = Signal(str, str)
+    def __init__(self, paths, known):
+        super().__init__();self.paths = paths;self.known = known
+    def run(self):
+        for path in self.paths:
+            if self.isInterruptionRequested():return
+            try:
+                cached = self.known.get(path)
+                stat = Path(path).stat()
+                index = cached[1] if cached and cached[0] == (stat.st_size, stat.st_mtime_ns) else index_video(path, cancelled=self.isInterruptionRequested, cache_dir=ROOT/'artifacts'/'frame-indexes')
+                self.indexed.emit(path, index)
+            except Exception as error:self.failed.emit(path, str(error))
+
+
+class Tile(QFrame):
+    def __init__(self, document, reader, anchor):
+        super().__init__();self.setObjectName('card');self.document = document;self.reader = reader;self.anchor = anchor
+        self.pool = ThreadPoolExecutor(max_workers=1);self.future = None;self.wanted = 0;self.shown = None;self.pending = None
+        layout = QVBoxLayout(self);layout.setContentsMargins(8, 6, 8, 6);layout.setSpacing(4)
+        result = {'failed': 'fell', 'completed': 'topped'}.get(document['outcome'], '')
+        title = QLabel(f"{document['climber']} · attempt {document['attempt']}"+(f' · {result}' if result else ''));title.setObjectName('section');layout.addWidget(title)
+        self.view = ImageView();layout.addWidget(self.view, 1)
+        self.status = QLabel();self.status.setObjectName('muted');layout.addWidget(self.status)
+    def seek(self, t):
+        seconds = self.anchor+t;self.wanted = frame_at(self.reader.times, seconds)
+        note = ' · before video start' if seconds < 0 else ' · video ended' if seconds > self.reader.times[-1] else ''
+        self.status.setText(f'Frame {self.wanted} · video {self.reader.times[self.wanted]:.3f} s'+note)
+    def pump(self, playing):
+        if self.future and self.future.done():
+            try:self.view.display(self.future.result());self.shown = self.pending
+            except Exception as error:self.status.setText('Cannot decode: '+str(error))
+            self.future = None
+        if self.future is None and self.wanted != self.shown:
+            self.pending = self.wanted;self.future = self.pool.submit(self.reader.frame, self.wanted, not playing)
+    def close_reader(self):
+        if self.future:
+            try:self.future.result()
+            except Exception:pass
+        self.pool.shutdown(wait=True);self.reader.close()
+
+
+class SyncView(QWidget):
+    def __init__(self, window):
+        super().__init__();self.window = window;self.tiles = [];self.indexes = {};self.worker = None
+        self.t = 0.;self.lo = 0.;self.hi = 1.;self.playing = False;self.clock = QElapsedTimer();self.play_from = 0.
+        self.timer = QTimer(self);self.timer.setInterval(15);self.timer.timeout.connect(self.tick)
+        layout = QVBoxLayout(self);layout.setContentsMargins(10, 10, 10, 8);layout.setSpacing(6)
+        top = QHBoxLayout();top.addWidget(QLabel('Align at'));self.anchor = QComboBox();self.anchor.setMinimumWidth(170);self.anchor.currentIndexChanged.connect(self.rebuild);top.addWidget(self.anchor)
+        reload = QPushButton('Reload videos');reload.clicked.connect(self.load);top.addWidget(reload)
+        self.note = QLabel();self.note.setObjectName('muted');top.addWidget(self.note, 1);layout.addLayout(top)
+        self.grid = QGridLayout();self.grid.setSpacing(8);holder = QWidget();holder.setLayout(self.grid);layout.addWidget(holder, 1)
+        controls = QHBoxLayout()
+        self.play_button = QPushButton('Play · Space');self.play_button.setProperty('role', 'primary');self.play_button.clicked.connect(self.toggle_play);controls.addWidget(self.play_button)
+        for text, delta in (('← 1 s', -1.), ('← frame', -1/30), ('frame →', 1/30), ('1 s →', 1.)):
+            b = QPushButton(text);b.clicked.connect(lambda checked=False, d=delta:self.step(d));controls.addWidget(b)
+        self.speed = QComboBox();self.speed.addItems([f'{s:g}×' for s in SPEEDS]);self.speed.setCurrentIndex(2);self.speed.currentIndexChanged.connect(self.restart_clock);controls.addWidget(self.speed)
+        self.slider = QSlider(Qt.Orientation.Horizontal);self.slider.valueChanged.connect(lambda ms:self.seek(ms/1000));self.slider.sliderPressed.connect(self.pause);controls.addWidget(self.slider, 1)
+        self.position = QLabel();self.position.setMinimumWidth(190);controls.addWidget(self.position);layout.addLayout(controls)
+    def anchors(self):
+        names = sorted({p['name'] for d in self.window.workspace.documents() for p in d.get('checkpoints', [])}, key=str.casefold)
+        return [('Climb start', 'start')]+[(f'Point {n} · first arrival', n) for n in names]
+    def activate(self):
+        self.window.remember_current()
+        current = self.anchor.currentData() or 'start'
+        self.anchor.blockSignals(True);self.anchor.clear()
+        for title, value in self.anchors():self.anchor.addItem(title, value)
+        self.anchor.setCurrentIndex(max(0, self.anchor.findData(current)));self.anchor.blockSignals(False)
+        self.load()
+    def load(self):
+        if self.worker and self.worker.isRunning():return
+        paths = [p for p in self.window.workspace.videos if p in self.window.workspace.states and Path(p).is_file()]
+        missing = [p for p in paths if p not in self.indexes]
+        if missing:
+            self.note.setText(f'Indexing {len(missing)} video(s)… first time only');self.worker = IndexAll(missing, dict(self.window.session_indexes))
+            self.worker.indexed.connect(lambda p, i:self.indexes.__setitem__(p, i));self.worker.failed.connect(lambda p, e:self.note.setText(Path(p).name+': '+e))
+            self.worker.finished.connect(self.rebuild);self.worker.start()
+        else:self.rebuild()
+    def clear(self):
+        self.pause()
+        for tile in self.tiles:tile.close_reader();tile.deleteLater()
+        self.tiles = []
+    def rebuild(self):
+        if self.worker and self.worker.isRunning():return
+        self.clear();anchor = self.anchor.currentData() or 'start';skipped = []
+        from .preview_cache import open_preview
+        for path in self.window.workspace.videos:
+            state = self.window.workspace.states.get(path);index = self.indexes.get(path)
+            if not state or not index:continue
+            d = state['document'];seconds = anchor_seconds(d, anchor)
+            if seconds is None or index['source']['sha256'] != d['source']['sha256']:skipped.append(d['climber']);continue
+            # One decoder per tile; 'auto' uses the hardware decoder (VideoToolbox / CUDA) when the file allows.
+            reader = open_preview(ROOT/'artifacts'/'preview-cache', index) or VideoReader(path, index, 'auto')
+            self.tiles.append(Tile(d, reader, seconds))
+        columns = max(1, math.ceil(math.sqrt(len(self.tiles))))
+        for i, tile in enumerate(self.tiles):self.grid.addWidget(tile, i//columns, i % columns)
+        self.lo = min((-t.anchor for t in self.tiles), default=0.);self.hi = max((t.reader.times[-1]-t.anchor for t in self.tiles), default=1.)
+        self.slider.blockSignals(True);self.slider.setRange(int(self.lo*1000), int(self.hi*1000));self.slider.blockSignals(False)
+        what = 'climb start' if anchor == 'start' else 'point '+anchor
+        self.note.setText(f'{len(self.tiles)} video(s) aligned at {what}'+(f" · not marked: {', '.join(skipped)}" if skipped else '') if self.tiles else 'Mark climb start (or the chosen point) in at least one video to compare.')
+        self.seek(0.)
+        if self.tiles:self.timer.start()
+    def seek(self, t):
+        self.t = max(self.lo, min(self.hi, t))
+        for tile in self.tiles:tile.seek(self.t)
+        self.slider.blockSignals(True);self.slider.setValue(int(self.t*1000));self.slider.blockSignals(False)
+        self.position.setText(f'{self.t:+.3f} s from alignment')
+        if self.playing:self.restart_clock()
+    def step(self, seconds):self.pause();self.seek(self.t+seconds)
+    def restart_clock(self):self.play_from = self.t;self.clock.restart()
+    def toggle_play(self):
+        if self.playing:return self.pause()
+        if not self.tiles:return
+        if self.t >= self.hi:self.seek(self.lo)
+        self.playing = True;self.restart_clock();self.play_button.setText('Pause · Space')
+    def pause(self):
+        self.playing = False;self.play_button.setText('Play · Space')
+    def tick(self):
+        if self.playing:
+            t = self.play_from+self.clock.elapsed()/1000*SPEEDS[self.speed.currentIndex()]
+            if t >= self.hi:self.pause();t = self.hi
+            self.t = max(self.lo, min(self.hi, t))
+            for tile in self.tiles:tile.seek(self.t)
+            self.slider.blockSignals(True);self.slider.setValue(int(self.t*1000));self.slider.blockSignals(False);self.position.setText(f'{self.t:+.3f} s from alignment')
+        for tile in self.tiles:tile.pump(self.playing)
+    def shutdown(self):
+        if self.worker and self.worker.isRunning():self.worker.requestInterruption();self.worker.wait()
+        self.timer.stop();self.clear()

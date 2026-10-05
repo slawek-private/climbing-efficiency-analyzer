@@ -250,6 +250,13 @@
         },
         "notes": {
           "type": "string"
+        },
+        "clip_method": {
+          "enum": [
+            "mouth",
+            "direct"
+          ],
+          "description": "Clip technique: rope pulled to the mouth before clipping, or clipped directly from a favourable position. Absent means unknown."
         }
       }
     },

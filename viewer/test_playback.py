@@ -77,9 +77,11 @@ def test_four_timer_shortcuts_buttons_and_typing(tmp_path,monkeypatch):
     assert len(w.document()['open_events'])==6
     assert set((e['kind'],e['hand']) for e in w.document()['open_events'])=={('clip','left'),('clip','right'),('rest','left'),('rest','right'),('chalk','left'),('chalk','right')}
     assert all('Stop' in b.text() for b in w.hand_timer_buttons.values())
-    w.show_frame(5)
+    w.show_frame(5);w.clip_method.setCurrentIndex(w.clip_method.findData('mouth'))
     for button in w.hand_timer_buttons.values():QTest.mouseClick(button,Qt.MouseButton.LeftButton)
     assert not w.document()['open_events'] and len(w.document()['events'])==6
+    clips={e['hand']:e.get('clip_method') for e in w.document()['events'] if e['kind']=='clip'}
+    assert clips=={'left':'mouth','right':None} and w.clip_method.currentData() is None
     assert all('Start' in b.text() for b in w.hand_timer_buttons.values())
     assert w.draw.value()==2 and all(e['target']==1 for e in w.document()['events'] if e['kind']=='clip')
     initial=w.theme;w.toggle_theme();assert w.theme!=initial and w.event_timeline.dark==(w.theme=='dark');w.toggle_theme();assert w.theme==initial

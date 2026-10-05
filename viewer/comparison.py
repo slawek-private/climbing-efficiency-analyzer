@@ -23,6 +23,9 @@ def rows(documents):
             total=length(intervals) if marked and start is not None and end is not None else None
             summary[kind+"_marked_seconds"]=total
             summary[kind+"_marked_count"]=len(union(intervals)) if kind=="rest" and total is not None else len(intervals) if total is not None else None
+        climb_clips=[e for e in d["events"] if e["kind"]=="clip" and start is not None and end is not None and e["end"]["seconds"]>start and e["start"]["seconds"]<end]
+        methods=[e.get("clip_method") for e in climb_clips]
+        for method in ("mouth","direct"):summary["clip_"+method+"_count"]=methods.count(method) if any(methods) else None
         summary["marked_rest_share"]=summary["rest_marked_seconds"]/summary["climb_seconds"] if summary["rest_marked_seconds"] is not None else None
         summary["seconds_outside_marked_rests"]=summary["climb_seconds"]-summary["rest_marked_seconds"] if summary["rest_marked_seconds"] is not None else None
         for kind in ('rest','clip','chalk'):
@@ -65,7 +68,7 @@ def export_comparison(documents,path):
         for e in d['events']+d['open_events']:
             if e['kind'] not in ('rest','clip','chalk'):continue
             end=e.get('end');start=e['start'];climb_start=d['start']['seconds'] if d['start'] else None
-            activities.append(dict(athlete=d['climber'],attempt=d['attempt'],video=d['source']['file'],activity=e['kind'],hand=e['hand'],quickdraw=e['target'],start_from_climb_seconds=start['seconds']-climb_start if climb_start is not None else None,end_from_climb_seconds=end['seconds']-climb_start if end and climb_start is not None else None,start_video_seconds=start['seconds'],end_video_seconds=end['seconds'] if end else None,duration_seconds=end['seconds']-start['seconds'] if end else None,start_frame=start['frame'],end_frame=end['frame'] if end else None,status='closed' if end else 'unfinished'))
+            activities.append(dict(athlete=d['climber'],attempt=d['attempt'],video=d['source']['file'],activity=e['kind'],hand=e['hand'],quickdraw=e['target'],clip_method=e.get('clip_method') if e['kind']=='clip' else None,start_from_climb_seconds=start['seconds']-climb_start if climb_start is not None else None,end_from_climb_seconds=end['seconds']-climb_start if end and climb_start is not None else None,start_video_seconds=start['seconds'],end_video_seconds=end['seconds'] if end else None,duration_seconds=end['seconds']-start['seconds'] if end else None,start_frame=start['frame'],end_frame=end['frame'] if end else None,status='closed' if end else 'unfinished'))
     groups.append(activities)
     headings=('Athlete overview','Arrival at named points','Every hand / hold interval','Rest, clipping and chalking intervals')
     defaults=(['athlete','attempt','climb_seconds'],['athlete','point','seconds_from_climb_start'],['athlete','hand','hold','duration_seconds'],['athlete','activity','duration_seconds'])

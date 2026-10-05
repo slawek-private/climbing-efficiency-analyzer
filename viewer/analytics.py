@@ -39,7 +39,7 @@ def matched_clips(documents):
             if e['kind']!='clip':continue
             if base is not None and e['end']['seconds']<=base:continue
             if d['end'] and e['start']['seconds']>=d['end']['seconds']:continue
-            output.append(dict(athlete=d['climber'],attempt=d['attempt'],video=d['source']['file'],quickdraw=e['target'],hand=e['hand'],duration_seconds=e['end']['seconds']-e['start']['seconds'],start_from_climb_seconds=e['start']['seconds']-base if base is not None else None,end_from_climb_seconds=e['end']['seconds']-base if base is not None else None))
+            output.append(dict(athlete=d['climber'],attempt=d['attempt'],video=d['source']['file'],quickdraw=e['target'],hand=e['hand'],clip_method=e.get('clip_method'),duration_seconds=e['end']['seconds']-e['start']['seconds'],start_from_climb_seconds=e['start']['seconds']-base if base is not None else None,end_from_climb_seconds=e['end']['seconds']-base if base is not None else None))
     return output
 
 

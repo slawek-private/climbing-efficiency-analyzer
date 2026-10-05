@@ -91,7 +91,7 @@ def export_pdf(source,output,focus=None,route=''):
         grid(['Split','Raw gap s','Recovery removed s','Outside recovery s','Peer median s','Difference s','Flag'],gaps)
         paragraph('Recovery removed includes chalking and dedicated rest, merged within the gap. Overlaps are subtracted once. The remainder can include movement, route reading or unmarked rest. Timing alone cannot establish why an athlete fell.')
     story.append(PageBreak());heading('Every completed clip')
-    grid(['Athlete','Draw','Hand','Start from climb s','Completed from climb s','Duration s'],[[a['athlete'],a['quickdraw'],a['hand'],number(a['start from climb seconds']),number(a['end from climb seconds']),number(a['duration seconds'])] for a in activities if a['activity']=='clip' and a['status']=='closed'])
+    grid(['Athlete','Draw','Hand','Method','Start from climb s','Completed from climb s','Duration s'],[[a['athlete'],a['quickdraw'],a['hand'],a.get('clip method') or 'Unmarked',number(a['start from climb seconds']),number(a['end from climb seconds']),number(a['duration seconds'])] for a in activities if a['activity']=='clip' and a['status']=='closed'])
     story.append(PageBreak());heading('Every between-clip split')
     grid(['Athlete','Draw split','Gap s','Completion split s','Recovery removed s','Outside recovery s'],[[s['athlete'],s['from quickdraw']+' -> '+s['to quickdraw'],number(s['gap seconds']),number(s['completion to completion seconds']),number(s['total marked rest in gap seconds']),number(s['gap outside marked rest seconds'])] for s in splits])
     story.append(PageBreak());heading('Rest and chalking activity log')
