@@ -171,12 +171,15 @@ def build(w):
     keys={'clip':{'left':'L','right':'R'},'rest':{'left':'Q','right':'W'},'chalk':{'left':'C','right':'V'}}
     for hand in ('left','right'):
         card=QFrame();card.setObjectName('hand');col=QVBoxLayout(card);col.setContentsMargins(10,8,10,8);col.setSpacing(3)
-        title=QHBoxLayout();title.addWidget(label(hand.upper()+' HAND','handTitle'));title.addStretch();title.addWidget(label(' · '.join(keys[k][hand] for k in keys),'muted'));col.addLayout(title)
+        # No word wrap here: wrapped labels in a scroll area can be laid out shorter than they draw.
+        title=QHBoxLayout();heading=label(hand.upper()+' HAND','handTitle');hint=label(' · '.join(keys[k][hand] for k in keys),'muted')
+        for item in (heading,hint):item.setWordWrap(False)
+        title.addWidget(heading);title.addStretch();title.addWidget(hint);col.addLayout(title)
         for kind in ('clip','rest','chalk'):
             line=QHBoxLayout();line.setSpacing(4);name=label('● '+kind.capitalize(),'kind');name.setProperty('kind',kind);name.setWordWrap(False);name.setFixedWidth(62);line.addWidget(name)
             control=button(f'Start {kind} · {keys[kind][hand]}',lambda checked=False,k=kind,h=hand:w.toggle_hand_timer(k,h),'start');control.setProperty('kind',kind);control.setMinimumHeight(26);line.addWidget(control,1)
             cancel=button('×',lambda checked=False,k=kind,h=hand:w.cancel_hand_timer(k,h),'quiet');cancel.setToolTip('Discard this unfinished timer');line.addWidget(cancel);col.addLayout(line)
-            status=label('Ready','timerStatus');status.setWordWrap(False);status.setContentsMargins(66,0,0,4);w.hand_timer_status[kind,hand]=status;col.addWidget(status);w.hand_timer_buttons[kind,hand]=control
+            status=label('Ready','timerStatus');status.setWordWrap(False);status.setContentsMargins(66,0,0,0);status.setFixedHeight(20);w.hand_timer_status[kind,hand]=status;col.addWidget(status);w.hand_timer_buttons[kind,hand]=control
         hands.addWidget(card)
     measure.addWidget(w.hands_box);w.legacy_rest_panel=QWidget();legacy=QHBoxLayout(w.legacy_rest_panel);legacy.setContentsMargins(0,0,0,0);legacy.addWidget(label('Earlier rest timer','muted'));legacy.addWidget(button('Stop',w.stop_legacy_rest,'stop'));legacy.addWidget(button('Cancel',lambda:w.cancel_hand_timer('rest','none'),'quiet'));measure.addWidget(w.legacy_rest_panel)
     measure.addWidget(label('Recorded timeline · climb-relative seconds','section'))
