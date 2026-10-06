@@ -94,6 +94,29 @@ Windows CUDA feasibility tools require `uv sync --locked --extra analysis`.
 The manual viewer does not need model weights, CUDA or cloud APIs. CI uses
 synthetic fixtures only, on Windows and macOS arm64.
 
+## Roadmap: models trained with SageMaker
+
+The ultimate goal is to use **Amazon SageMaker accelerated computing** (GPU
+training instances) to train models that enable more advanced video analysis:
+automatically proposing climb start and end, hand–hold contacts, clips, rests
+and chalking, and eventually body position and movement efficiency.
+
+The frame-accurate measurements made in Climb Studio are the foundation: every
+label is tied to an exact frame and to the checksum of the original video, which
+makes them suitable as training and evaluation data.
+
+Planned principles:
+
+- **Opt-in only.** Footage or labels are used for training only with the explicit
+  consent of the people filmed, and only for datasets the user chooses to share.
+- **Humans stay in control.** Model output will be presented as suggestions to
+  review and correct in the existing editor, never as unreviewed measurements.
+- **Local first.** The app keeps working fully offline; trained models are meant
+  to run on the user's own computer.
+
+Today none of this is implemented: the app makes no cloud or model calls, and
+the optional Windows inference tools remain a feasibility experiment.
+
 ## Private footage and telemetry
 
 Videos, images, labels, athlete telemetry, caches, generated reports and
