@@ -9,7 +9,7 @@ from PySide6.QtGui import QColor,QPainter,QFontDatabase,QAction,QKeySequence
 from PySide6.QtWidgets import (QWidget,QVBoxLayout,QHBoxLayout,QGridLayout,QLabel,QPushButton,QFrame,QTabWidget,QSplitter,QScrollArea,QHeaderView,
     QAbstractItemView,QComboBox,QTableWidget,QSpinBox,QMessageBox,QMenu,QDialog,QFormLayout,QCheckBox,QDialogButtonBox,QStyledItemDelegate,QStyle,QSizePolicy)
 from .version import APP_NAME,__version__
-from .platform_runtime import GPU_LABEL
+from .platform_runtime import GPU_LABEL,configure_window_font,timecode_font
 
 STYLE='''
 QWidget { font-size: 13px; color: #25334a; }
@@ -158,6 +158,7 @@ class SettingsDialog(QDialog):
         close=QDialogButtonBox(QDialogButtonBox.StandardButton.Close);close.rejected.connect(self.reject);form.addRow(close)
 
 def build(w):
+    configure_window_font(w)
     # Retain inherited editor fields and callbacks while moving visible controls.
     old=w.takeCentralWidget();old.setParent(w);old.hide();w.legacy_widget=old
     root=QWidget();root.setObjectName('workspace');outer=QVBoxLayout(root);outer.setContentsMargins(14,10,14,4);outer.setSpacing(8);w.setCentralWidget(root)
@@ -228,7 +229,7 @@ def build(w):
     for b in (w.step_back_button,w.step_forward_button):b.setFixedWidth(40);controls.addWidget(b)
     w.speed.setParent(w.transport);w.speed.setToolTip('Playback speed');controls.addWidget(w.speed);controls.addStretch()
     w.position.setParent(w.transport);w.position.setObjectName('timecode');w.position.setWordWrap(False);w.position.setTextFormat(Qt.TextFormat.RichText);w.position.setToolTip('Playhead: minutes:seconds.milliseconds and the frame number in the original video.\n\n'+LOADING_HELP)
-    font=QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont);font.setPointSizeF(15);w.position.setFont(font);controls.addWidget(w.position);controls.addStretch()
+    font=timecode_font();font.setPixelSize(19);w.position.setFont(font);controls.addWidget(w.position);controls.addStretch()
     w.timeline_zoom=QComboBox();w.timeline_zoom.setToolTip('Timeline zoom · pinch or scroll on the timeline; two-finger swipe or right-drag pans')
     for title,seconds in [('Full video',0),('60 s',60),('30 s',30),('15 s',15),('5 s',5),('1 s',1)]:w.timeline_zoom.addItem(title,seconds)
     w.timeline_zoom.currentIndexChanged.connect(lambda index:w.precision_scrubber.set_span(w.timeline_zoom.itemData(index)));secondary.addWidget(w.timeline_zoom)

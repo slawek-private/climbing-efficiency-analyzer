@@ -108,7 +108,7 @@ def test_route_selection_and_laptop_layout(tmp_path,monkeypatch):
     from PySide6.QtTest import QTest
     QTest.qWait(50);w.resize(1024,768);app.processEvents()
     names=('measure_page','transport','measurement_scroll','position','preview_button','image','active_timers','speed','timeline_zoom')
-    assert w.width()==1024, '\n'.join(f'{name}: minimum={getattr(w,name).minimumSizeHint().width()}, width={getattr(w,name).width()}' for name in names)
+    assert w.width()==1024, '\n'.join(f'{name}: minimum={getattr(w,name).minimumSizeHint().width()}, width={getattr(w,name).width()}, font={getattr(w,name).font().toString()}' for name in names)
     assert w.position.visibleRegion().boundingRect().width()>=w.position.sizeHint().width()
     w.toggle_hand_timer('rest','left');w.toggle_inspector();app.processEvents();assert not w.measurement_scroll.isVisible() and w.active_timers.isVisible()
     w.close()

@@ -5,6 +5,17 @@ import sys
 import tempfile
 from pathlib import Path
 
+def configure_window_font(window):
+    # Windows' offscreen/default legacy font can be a non-scalable bitmap font.
+    # Use the native scalable UI face so pixel sizes and laptop layouts agree.
+    if sys.platform=='win32':
+        from PySide6.QtGui import QFont
+        window.setFont(QFont('Segoe UI'))
+
+def timecode_font():
+    from PySide6.QtGui import QFont,QFontDatabase
+    return QFont('Consolas') if sys.platform=='win32' else QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
+
 def hidden_process_options():
     return {'creationflags':subprocess.CREATE_NO_WINDOW} if sys.platform=='win32' else {}
 
