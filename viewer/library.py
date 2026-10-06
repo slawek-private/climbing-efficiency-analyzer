@@ -6,7 +6,7 @@ from pathlib import Path
 import av
 from PIL import Image
 from PySide6.QtCore import Qt, QThread, Signal
-from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTableWidget, QTableWidgetItem,
+from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout,QGridLayout, QLabel, QPushButton, QTableWidget, QTableWidgetItem,
                                QAbstractItemView, QHeaderView, QMessageBox,QCheckBox)
 from . import storage
 
@@ -96,7 +96,7 @@ class LibraryTab(QWidget):
         intro = QLabel('Every video in this project with its recording settings. Prepare smooth previews in bulk and leave it running: '
                        'videos are processed one after another in the background while you keep working. Originals are never modified.')
         intro.setWordWrap(True);intro.setObjectName('muted');layout.addWidget(intro)
-        bar = QHBoxLayout();self.buttons = {}
+        bar = QGridLayout();self.buttons = {}
         for key, text, callback, tip in [
             ('add', 'Add videos…', window.open_video, 'Add video files to this project.'),
             ('recommended', 'Prepare all recommended', lambda:self.prepare(recommended=True), 'Queue every video marked Recommended that has no smooth preview yet.'),
@@ -104,8 +104,8 @@ class LibraryTab(QWidget):
             ('cancel', 'Cancel queue', self.cancel, 'Stop after discarding the preview currently being prepared.'),
             ('remove', 'Remove from project', self.remove, 'Remove the selected videos from this project. Video files and saved measurements are kept.'),
             ('storage', 'Storage…', window.show_storage, 'See and limit disk space used by previews and frame indexes.')]:
-            b = QPushButton(text);b.setToolTip(tip);b.clicked.connect(callback);bar.addWidget(b);self.buttons[key] = b
-        self.buttons['recommended'].setProperty('role', 'primary');self.buttons['cancel'].setEnabled(False);bar.addStretch();layout.addLayout(bar)
+            b = QPushButton(text);b.setToolTip(tip);b.clicked.connect(callback);bar.addWidget(b,len(self.buttons)//3,len(self.buttons)%3);self.buttons[key] = b
+        self.buttons['recommended'].setProperty('role', 'primary');self.buttons['cancel'].setEnabled(False);bar.setColumnStretch(3,1);layout.addLayout(bar)
         self.table = QTableWidget(0, len(COLUMNS));self.table.setHorizontalHeaderLabels(COLUMNS);self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows);self.table.setAlternatingRowColors(True);self.table.setShowGrid(False);self.table.verticalHeader().hide()
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents);self.table.horizontalHeader().setStretchLastSection(False);self.table.horizontalHeader().setSectionResizeMode(0,QHeaderView.ResizeMode.Stretch);self.table.horizontalHeader().moveSection(10,1);self.table.horizontalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignLeft|Qt.AlignmentFlag.AlignVCenter)

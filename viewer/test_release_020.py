@@ -14,7 +14,9 @@ def test_collision_rename_new_attempt_and_missing_source(tmp_path,monkeypatch):
     app,w=window(tmp_path,monkeypatch);paths=[];labels=[]
     for n in (40,50):
         folder=tmp_path/str(n);folder.mkdir();path=folder/'IMG_0001.mkv';index=synthetic(path,n);paths.append(path)
-        w.video_path=path;w.label_path=None;w.index_ready(index);w.show_frame(2);w.set_start();assert w.autosave();labels.append(w.label_path)
+        from viewer.test_playback import wait_until
+        w.begin_video(path);wait_until(app,lambda:w.reader is not None and w.reader.index['source']['sha256']==index['source']['sha256'])
+        w.show_frame(2);w.set_start();assert w.autosave();labels.append(w.label_path)
     assert labels[0]!=labels[1] and all(load(p)['start']['frame']==2 for p in labels)
     original=w.label_path;identifier=w.document()['attempt_id'];d=copy.deepcopy(w.document());d.update(climber='Renamed athlete',attempt='99');w.commit(d);assert w.autosave()
     assert w.label_path==original and w.document()['attempt_id']==identifier
@@ -104,7 +106,7 @@ def test_route_selection_and_laptop_layout(tmp_path,monkeypatch):
     w.compare_scope.route.setCurrentText('Other route');assert len(w.comparison_documents)==1 and w.comparison_documents[0]['climber']=='Other'
     w.show_view(w.measure_page)
     from PySide6.QtTest import QTest
-    QTest.qWait(50);w.resize(1024,768);app.processEvents();assert w.width()==1024
+    QTest.qWait(50);w.resize(1024,768);app.processEvents();assert w.width()==1024, [(type(x).__name__,x.minimumSizeHint().width(),x.minimumWidth(),x.width()) for x in (w,w.centralWidget(),w.main_tabs,w.measure_page,w.compare_page,w.sync_view,w.library,w.transport,w.measurement_scroll)]
     assert w.position.visibleRegion().boundingRect().width()>=w.position.sizeHint().width()
     w.toggle_hand_timer('rest','left');w.toggle_inspector();app.processEvents();assert not w.measurement_scroll.isVisible() and w.active_timers.isVisible()
     w.close()

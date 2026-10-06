@@ -119,7 +119,7 @@ class SyncView(QWidget):
         top = QHBoxLayout();top.addWidget(QLabel('Align at'));self.anchor = QComboBox();self.anchor.setMinimumWidth(170);self.anchor.currentIndexChanged.connect(self.alignment_changed);top.addWidget(self.anchor)
         self.anchor.setToolTip('The moment that becomes 0 s in every video: climb start, or the first arrival at a shared named point.')
         reload = QPushButton('Reload videos');reload.setProperty('role', 'quiet');reload.clicked.connect(self.load);top.addWidget(reload)
-        self.note = QLabel();self.note.setObjectName('muted');top.addWidget(self.note, 1)
+        self.note = QLabel();self.note.setWordWrap(True);self.note.setObjectName('muted');top.addWidget(self.note, 1)
         self.full = QPushButton('Full screen');self.full.setToolTip('Use the whole screen for the videos (Esc or click again to leave).');self.full.clicked.connect(self.toggle_full_screen);top.addWidget(self.full);layout.addLayout(top)
         self.area = TileArea();layout.addWidget(self.area, 1)
         controls = QHBoxLayout();controls.setSpacing(4)
