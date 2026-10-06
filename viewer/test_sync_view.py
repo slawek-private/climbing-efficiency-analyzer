@@ -29,7 +29,7 @@ def test_videos_align_at_climb_start(tmp_path,monkeypatch):
         d=empty_labels(index['source']);d['climber']=name[0].upper()
         if start is not None:d['start']={'frame':start,'pts':index['pts'][start],'seconds':reader_times[start]}
         w.workspace.remember(path,d)
-    w.main_tabs.setCurrentWidget(w.sync_view);wait_until(app,lambda:len(w.sync_view.tiles)==2)
+    w.show_view(w.sync_view);wait_until(app,lambda:len(w.sync_view.tiles)==2)
     view=w.sync_view;assert 'not marked: C' in view.note.text()
     assert [t.wanted for t in view.tiles]==[3,7]
     view.step(.5);assert [t.wanted for t in view.tiles]==[8,12]

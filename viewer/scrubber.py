@@ -10,7 +10,7 @@ class PrecisionScrubber(QWidget):
     released=Signal()
     zoomChanged=Signal(float)
     def __init__(self):
-        super().__init__();self.setMinimumHeight(102);self.setMaximumHeight(102)
+        super().__init__();self.setMinimumHeight(92);self.setMaximumHeight(92)
         self.duration=1.;self.position=0.;self.document=None;self.dark=False
         self.span=0.;self.center=0.;self.dragging=False;self.panning=False
         self.setMouseTracking(True)
@@ -45,7 +45,7 @@ class PrecisionScrubber(QWidget):
         while t<=b:
             x=self.x_at(t);p.setPen(QColor(text));p.drawLine(int(x),29,int(x),43)
             label=self.time_text(t)[:-4] if step>=1 else self.time_text(t)[:-2]
-            p.drawText(QRectF(x-35,5,70,20),Qt.AlignmentFlag.AlignCenter,label)
+            p.drawText(QRectF(max(0.,min(self.width()-70.,x-35)),5,70,20),Qt.AlignmentFlag.AlignCenter,label)
             for j in range(1,5):
                 minor=t+j*step/5
                 if minor<b:p.drawLine(int(self.x_at(minor)),36,int(self.x_at(minor)),43)
@@ -65,12 +65,10 @@ class PrecisionScrubber(QWidget):
                     x=int(self.x_at(t));p.setPen(QPen(QColor('#e3a83a'),2));p.drawLine(x,42,x,73)
             for key,word in (('start','START'),('end','END')):
                 if d[key] and a<=d[key]['seconds']<=b:
-                    x=int(self.x_at(d[key]['seconds']));p.setPen(QColor('#20ab85' if key=='start' else '#ec6966'));p.drawLine(x,29,x,73);p.drawText(x+3,86,word)
+                    x=int(self.x_at(d[key]['seconds']));p.setPen(QColor(('#e8edf4' if self.dark else '#141a24') if key=='start' else '#ec6966'));p.drawLine(x,29,x,73);p.drawText(x+3,86,word)
         if a<=self.position<=b:
             x=int(self.x_at(self.position));p.setPen(QPen(QColor('#ed6964'),2));p.drawLine(x,26,x,74)
             p.setBrush(QColor('#ed6964'));p.drawEllipse(QRectF(x-4,25,8,8))
-        p.setPen(QColor(text));p.drawText(12,99,f'{self.time_text(a)} – {self.time_text(b)} · visible {span:.1f}s')
-        label=self.time_text(self.position);p.drawText(max(12,self.width()-105),99,label)
     def mousePressEvent(self,event):
         if event.button()==Qt.MouseButton.RightButton:
             self.panning=True;self.pan_x=event.position().x();self.pan_center=sum(self.bounds())/2;return

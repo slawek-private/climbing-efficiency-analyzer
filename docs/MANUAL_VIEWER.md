@@ -156,3 +156,18 @@ Hardware decoding: the decoder menu offers **Apple GPU · VideoToolbox** on macO
 **Guidance.** On start, recording tips explain camera position, 1080p/4K, 60 fps, HDR and why YouTube, Google Photos or messaging apps re-encode footage (switch off in the dialog; Help › Recording tips reopens it). A guided tour runs once and can be replayed from Help › Show tour.
 
 **Updates.** Installed apps check GitHub Releases at most daily (Help › Check for updates automatically). *Update now* downloads the installer for this platform, verifies it against the release's `SHA256SUMS.txt`, and restarts: macOS swaps the app bundle in place after the app quits and restores the previous one if anything fails; Windows runs the installer silently and relaunches. If the app cannot replace itself (run from the disk image, no write permission, source checkout), *Download* opens the release page instead.
+
+## 0.19.0 · redesigned around the climb
+
+The window follows the job: measure one climb, compare climbs, manage videos.
+
+- **Three tabs.** *Measure*, *Compare* (Table · Charts · Patterns & efficiency · Side by side) and *Library*.
+- **Header.** Project, video (with “3 of 12”), *+ Add videos*, a save indicator and *Export ▾*. Ctrl+[ / Ctrl+] switch videos. The version is in Help › About; CPU and memory figures are in Help › Diagnostics.
+- **Autosave.** Every change is written to the project's labels folder about half a second later; “✓ Saved”, “Saving…” or “⚠ Not saved” (with the reason in its tooltip) shows the state. Switching video or project and quitting save first. Ctrl+S saves immediately. There is no separate save button any more.
+- **Empty state.** With no video open the video area is a drop zone with a one-line recording checklist and a link to the full recording tips. Drop videos, or a `.climbproject` file to import it, anywhere in the window. The tips no longer open by themselves.
+- **Measure panel.** Three cards in the order of a climb: *Athlete · start · end* (the start and end buttons show their values; × removes, ✎ changes the result), *During the climb* (clip method, quickdraw, a 2 × 3 grid of hand timers, named points) and a collapsible *Events* list. A running timer fills its tile, shows its time and offers × to discard it. Keyboard keys are shown as keycaps.
+- **Transport.** Play, step back and forward, speed, one large timecode with the frame number, timeline zoom, the smooth-preview chip and Fit. The decoder and step size moved to Settings (Ctrl+,). The separate recorded-events timeline was removed; events show as lanes in the timeline under the video.
+- **Compare · Table.** One row per attempt: result, climb time, recovery share with a bar, clips with average clip time, clip method, and the arrival at each named point with the gap to the fastest athlete there. Climb times of falls and tops are not ranked against each other. Click a header to sort; select a row to list every rest, clip and chalk; double-click to open the video. Exports keep every column.
+- **Charts.** Ranked bars only, one decimal, neutral bars with one highlighted athlete; recovery donuts remain in the HTML report.
+- **Guided tour.** Five steps on a loaded video, offered once after the first video opens; Help › Show tour replays it.
+- **Colour.** Colour belongs to the data (clip blue, rest green, chalk purple, points amber, end red); buttons are monochrome, with one primary action per screen.

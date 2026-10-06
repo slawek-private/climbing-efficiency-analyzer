@@ -51,9 +51,8 @@ def test_viewer_automatically_uses_prepared_preview_and_keeps_status_separate(tm
     assert w.reader.backend=='preview' and not w.decoder_choice.isEnabled()
     w.show_frame(4);wait_until(app,lambda:w.decode_future is None)
     assert w.reader.point(w.frame_number)['pts']==index['pts'][4]
-    for key,button in w.hand_timer_buttons.items():
-        status=w.hand_timer_status[key]
-        button_rect=button.rect();button_rect.moveTopLeft(button.mapTo(w,QPoint(0,0)))
-        status_rect=status.rect();status_rect.moveTopLeft(status.mapTo(w,QPoint(0,0)))
-        assert not button_rect.intersects(status_rect)
+    rects=[]
+    for button in w.hand_timer_buttons.values():
+        r=button.rect();r.moveTopLeft(button.mapTo(w,QPoint(0,0)));rects.append(r)
+    assert all(not a.intersects(b) for i,a in enumerate(rects) for b in rects[i+1:])
     w.saved=w.document();w.close()

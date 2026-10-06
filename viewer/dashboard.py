@@ -24,12 +24,12 @@ def table():
 def fill(t,headers,data):
     t.setColumnCount(len(headers));t.setHorizontalHeaderLabels(headers);t.setRowCount(len(data))
     for row,values in enumerate(data):
-        for col,v in enumerate(values):t.setItem(row,col,QTableWidgetItem('Unmarked' if v is None else f'{v:.2f}' if isinstance(v,float) else str(v)))
+        for col,v in enumerate(values):t.setItem(row,col,QTableWidgetItem('—' if v is None else f'{v:.2f}' if isinstance(v,float) else str(v)))
     t.resizeColumnsToContents()
 
 class Dashboard(QWidget):
     def __init__(self):
-        super().__init__();self.documents=[];layout=QVBoxLayout(self);layout.setContentsMargins(20,16,20,16);title=QLabel('Hand patterns & efficiency');title.setObjectName('brand');layout.addWidget(title)
+        super().__init__();self.documents=[];layout=QVBoxLayout(self);layout.setContentsMargins(20,16,20,16);title=QLabel('Hand patterns & efficiency');title.setObjectName('section');layout.addWidget(title)
         line=QHBoxLayout();line.addWidget(QLabel('Compare'));self.first=QComboBox();self.second=QComboBox();line.addWidget(self.first);line.addWidget(self.second);line.addStretch();layout.addLayout(line)
         note=QLabel('Observed hand choices, not a score: route geometry and stance affect clipping hand. More alternation or less rest is not automatically better. Missing chalking is unknown, not zero.');note.setWordWrap(True);note.setObjectName('muted');layout.addWidget(note)
         self.tabs=QTabWidget();layout.addWidget(self.tabs,1);self.hands=table();self.recovery=table();self.clips=table();self.point_table=table()

@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushB
                                QAbstractItemView, QHeaderView, QMessageBox)
 from . import storage
 
-COLUMNS = ['Video', 'Athlete', 'Resolution', 'FPS', 'Codec', 'Duration', 'File size', 'Smooth preview', 'Preview size', 'Status', 'Notes']
+COLUMNS = ['Video', 'Athlete', 'Resolution', 'FPS', 'Codec', 'Duration', 'File size', 'Smooth preview', 'Preview size', 'Notes']
 HDR_TRANSFERS = {16, 18}  # SMPTE ST 2084 (PQ) and ARIB STD-B67 (HLG)
 
 
@@ -41,10 +41,11 @@ def recommendation(meta):
 
 
 def notes(meta):
+    """Short flags per row; the explanation is written once in the summary line."""
     out = []
-    if meta['fps']:out.append(f"marks accurate to {1000/meta['fps']:.0f} ms" + (' · 50–60 fps recommended' if meta['fps'] < 49 else ''))
-    if min(meta['width'], meta['height']) < 1080:out.append('below 1080p')
-    if meta['hdr']:out.append('HDR: colours may look flat')
+    if meta['fps'] and meta['fps'] < 49:out.append(f"±{1000/meta['fps']:.0f} ms")
+    if min(meta['width'], meta['height']) < 1080:out.append('<1080p')
+    if meta['hdr']:out.append('HDR')
     return ' · '.join(out)
 
 
@@ -107,7 +108,7 @@ class LibraryTab(QWidget):
         self.buttons['recommended'].setProperty('role', 'primary');self.buttons['cancel'].setEnabled(False);bar.addStretch();layout.addLayout(bar)
         self.table = QTableWidget(0, len(COLUMNS));self.table.setHorizontalHeaderLabels(COLUMNS);self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows);self.table.setAlternatingRowColors(True);self.table.setShowGrid(False);self.table.verticalHeader().hide()
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents);self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents);self.table.horizontalHeader().setStretchLastSection(True);self.table.horizontalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignLeft|Qt.AlignmentFlag.AlignVCenter)
         self.table.cellDoubleClicked.connect(self.open_row);self.table.setToolTip('Double-click a video to open it in the Video workspace.');layout.addWidget(self.table, 1)
         self.summary = QLabel();self.summary.setObjectName('muted');self.summary.setWordWrap(True);layout.addWidget(self.summary)
     def paths(self):return list(self.window.workspace.videos)
@@ -126,27 +127,33 @@ class LibraryTab(QWidget):
     def preview_ready(self, meta):
         return bool(meta.get('sha256')) and (storage.folders(self.window.data_root())[0]/meta['sha256']/'manifest.json').exists()
     def render(self):
-        paths = self.paths();self.table.setRowCount(len(paths));states = self.window.workspace.states;wanted = 0
+        paths = self.paths();self.table.setRowCount(len(paths));states = self.window.workspace.states;wanted = 0;candidates = low_fps = low_res = hdr = 0
         for row, path in enumerate(paths):
             m = self.meta.get(path, {});state = states.get(path)
-            if 'error' in m:values = [Path(path).name, '', '', '', '', '', '', 'Unreadable', '', self.status.get(path, ''), m['error']]
+            if 'error' in m:values = [Path(path).name, '', '', '', '', '', '', self.status.get(path, 'Unreadable'), '', m['error']]
             elif m:
                 ready = self.preview_ready(m);advice = 'Ready' if ready else recommendation(m)
                 if not ready and advice == 'Recommended' and m['preview_bytes']:wanted += m['preview_bytes']
                 w, h = (m['height'], m['width']) if m['rotation'] in (90, 270) else (m['width'], m['height'])
-                values = [m['file'], state['document']['climber'] if state else '—', f'{w}×{h}', f"{m['fps']:.2f}".rstrip('0').rstrip('.') if m['fps'] else '?', m['codec'].upper()+(' · HDR' if m['hdr'] else ''),
-                          f"{m['duration']:.0f} s" if m['duration'] else '?', storage.human(m['size_bytes']), advice, '~'+storage.human(m['preview_bytes']) if m['preview_bytes'] else '?', self.status.get(path, ''), notes(m)]
-            else:values = [Path(path).name]+['']*8+[self.status.get(path, 'Waiting'), '']
+                values = [m['file'], state['document']['climber'] if state else '—', f'{w}×{h}', f"{m['fps']:.2f}".rstrip('0').rstrip('.') if m['fps'] else '?', m['codec'].upper(),
+                          f"{m['duration']:.0f} s" if m['duration'] else '?', storage.human(m['size_bytes']), self.status.get(path) or advice, '~'+storage.human(m['preview_bytes']) if m['preview_bytes'] else '?', notes(m)]
+                candidates += (not ready and advice == 'Recommended')
+                low_fps += bool(m['fps'] and m['fps'] < 49);low_res += min(m['width'], m['height']) < 1080;hdr += bool(m['hdr'])
+            else:values = [Path(path).name]+['']*6+[self.status.get(path, 'Waiting')]+['']*2
             for col, value in enumerate(values):
                 item = QTableWidgetItem(str(value))
+                if col == 9 and value:item.setToolTip('±N ms: under 50 fps, a mark can be off by up to one frame. <1080p: small hands and quickdraws. HDR: colours may look flat.')
                 if col == 7:item.setToolTip({'Ready': 'Smooth preview prepared: scrubbing and stepping use it automatically.', 'Recommended': '4K or HEVC: scrubbing the original is slow. Prepare a smooth preview.', 'Optional': 'Usually smooth enough without a preview.'}.get(value, ''))
                 self.table.setItem(row, col, item)
         root = self.window.data_root();cache = sum(r['preview_bytes']+r['index_bytes'] for r in storage.entries(root));limit = float(self.window.settings.value('cache_limit_gb', storage.DEFAULT_LIMIT_GB))
         free = shutil.disk_usage(root if root.exists() else Path.home()).free
-        self.summary.setText(f'{len(paths)} videos · cache {storage.human(cache)} of {limit:g} GB limit · {storage.human(free)} free on disk'
-                             +(f' · recommended previews still to prepare: ~{storage.human(wanted)}' if wanted else ''))
+        flags = [f'{n} {what}' for n, what in ((low_fps, 'under 50 fps (marks less precise)'), (low_res, 'below 1080p'), (hdr, 'HDR')) if n]
+        self.summary.setText(f'{len(paths)} videos'+(' · '+', '.join(flags) if flags else '')+f' · cache {storage.human(cache)} of {limit:g} GB · {storage.human(free)} free'
+                             +(f' · recommended previews to prepare: ~{storage.human(wanted)}' if wanted else ''))
         running = bool(self.bulk and self.bulk.isRunning());self.buttons['cancel'].setEnabled(running)
-        for key in ('recommended', 'selected', 'remove'):self.buttons[key].setEnabled(not running)
+        for key in ('selected', 'remove'):self.buttons[key].setEnabled(not running)
+        self.buttons['recommended'].setEnabled(not running and candidates > 0)
+        self.buttons['recommended'].setText(f'Prepare {candidates} recommended' if candidates else 'Nothing to prepare')
     def prepare(self, recommended):
         paths = self.paths()
         rows = range(len(paths)) if recommended else sorted({i.row() for i in self.table.selectedItems()})
@@ -161,7 +168,7 @@ class LibraryTab(QWidget):
         self.bulk.finished.connect(self.queue_finished);self.bulk.start();self.render()
     def progress(self, path, text):
         self.status[path] = text;row = self.paths().index(path) if path in self.paths() else -1
-        if row >= 0 and self.table.item(row, 9):self.table.item(row, 9).setText(text)
+        if row >= 0 and self.table.item(row, 7):self.table.item(row, 7).setText(text)
         else:self.render()
     def finished_one(self, path, digest):
         self.status[path] = 'Preview ready';self.window.preview_prepared(digest);self.render()

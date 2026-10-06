@@ -7,7 +7,7 @@ from viewer.test_sync_view import synthetic
 def test_probe_reads_metadata_and_estimates_preview(tmp_path):
     path=tmp_path/'clip.mkv';synthetic(path,30);m=probe(path)
     assert (m['codec'],m['width'],m['height'],round(m['fps']))==('ffv1',32,32,10) and m['frames']==30 and m['preview_bytes']>0
-    assert recommendation(m)=='Optional' and 'below 1080p' in notes(m) and '50–60 fps recommended' in notes(m)
+    assert recommendation(m)=='Optional' and notes(m)=='±100 ms · <1080p'
     assert recommendation({**m,'width':3840,'height':2160})=='Recommended' and recommendation({**m,'codec':'hevc','width':1080,'height':1920})=='Recommended'
 
 def test_side_by_side_picks_largest_layout():

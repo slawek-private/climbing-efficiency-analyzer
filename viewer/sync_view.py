@@ -31,8 +31,9 @@ def best_columns(count, width, height, aspect, gap=2):
 
 
 def frame_at(times, seconds):
-    """Frame shown at a video time: the last frame whose timestamp is not after it."""
-    return max(0, min(len(times)-1, bisect.bisect_right(times, seconds)-1))
+    """Frame shown at a video time: the last frame whose timestamp is not after it.
+    A microsecond of tolerance keeps sums like 0.7 + 0.2 = 0.8999… on the intended frame."""
+    return max(0, min(len(times)-1, bisect.bisect_right(times, seconds+1e-6)-1))
 
 
 class IndexAll(QThread):
@@ -123,8 +124,8 @@ class SyncView(QWidget):
         self.area = TileArea();layout.addWidget(self.area, 1)
         controls = QHBoxLayout();controls.setSpacing(4)
         self.play_button = QPushButton('Play · Space');self.play_button.setProperty('role', 'primary');self.play_button.clicked.connect(self.toggle_play);controls.addWidget(self.play_button)
-        for text, delta in (('← 1 s', -1.), ('← frame', -1/30), ('frame →', 1/30), ('1 s →', 1.)):
-            b = QPushButton(text);b.clicked.connect(lambda checked=False, d=delta:self.step(d));controls.addWidget(b)
+        for text, seconds, frames in (('← 1 s', -1., 0), ('← frame', 0, -1), ('frame →', 0, 1), ('1 s →', 1., 0)):
+            b = QPushButton(text);b.clicked.connect(lambda checked=False, s=seconds, f=frames:self.step(s) if s else self.step_frames(f));controls.addWidget(b)
         self.speed = QComboBox();self.speed.addItems([f'{s:g}×' for s in SPEEDS]);self.speed.setCurrentIndex(2);self.speed.currentIndexChanged.connect(self.restart_clock);controls.addWidget(self.speed)
         self.slider = QSlider(Qt.Orientation.Horizontal);self.slider.valueChanged.connect(lambda ms:self.seek(ms/1000));self.slider.sliderPressed.connect(self.pause);controls.addWidget(self.slider, 1)
         self.position = QLabel();self.position.setMinimumWidth(150);controls.addWidget(self.position);layout.addLayout(controls)
@@ -181,6 +182,12 @@ class SyncView(QWidget):
         self.position.setText(f'{self.t:+.3f} s from alignment')
         if self.playing:self.restart_clock()
     def step(self, seconds):self.pause();self.seek(self.t+seconds)
+    def step_frames(self, count):
+        """Move by the shortest frame duration among the videos, so no video skips a frame."""
+        self.step(count*self.frame_seconds())
+    def frame_seconds(self):
+        gaps = [sorted(b-a for a, b in zip(t.reader.times, t.reader.times[1:]))[len(t.reader.times)//2-1] for t in self.tiles if len(t.reader.times) > 2]
+        return min(gaps, default=1/30)
     def restart_clock(self):self.play_from = self.t;self.clock.restart()
     def toggle_play(self):
         if self.playing:return self.pause()

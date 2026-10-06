@@ -151,22 +151,28 @@ class ProjectBrowser(QDialog):
         intro = QLabel('A project groups the videos, measurements and reports of one event, route or training block. '
                        'Smooth previews are shared between projects. Export a project as one .climbproject file to archive it or move it to another computer.')
         intro.setWordWrap(True);intro.setObjectName('muted');layout.addWidget(intro)
-        self.table = QTableWidget(0, 5);self.table.setHorizontalHeaderLabels(['Project', 'Videos', 'Measured attempts', 'Last opened', 'Folder'])
+        self.table = QTableWidget(0, 5);self.table.setHorizontalHeaderLabels(['', 'Project', 'Videos', 'Measured', 'Last opened'])
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers);self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows);self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.table.verticalHeader().hide();self.table.setShowGrid(False);self.table.setAlternatingRowColors(True);self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents);self.table.horizontalHeader().setStretchLastSection(True)
         self.table.cellDoubleClicked.connect(lambda row, col:self.open());layout.addWidget(self.table, 1)
+        from PySide6.QtWidgets import QMenu
         line = QHBoxLayout()
-        for text, callback, role in [('Open', self.open, 'primary'), ('New…', self.new, None), ('Rename…', self.rename, None), ('Export…', self.export, None), ('Import…', self.import_file, None), ('Show folder', self.reveal, None), ('Delete…', self.delete, 'stop')]:
+        for text, callback, role in [('Open', self.open, 'primary'), ('New…', self.new, None), ('Import…', self.import_file, None)]:
             b = QPushButton(text);b.clicked.connect(callback);line.addWidget(b)
             if role:b.setProperty('role', role)
+        more = QPushButton('⋯');more.setToolTip('Rename, export, show the folder of, or delete the selected project');menu = QMenu(more)
+        for text, callback in [('Rename…', self.rename), ('Export as a file…', self.export), ('Show folder', self.reveal), (None, None), ('Delete…', self.delete)]:
+            if text:menu.addAction(text, callback)
+            else:menu.addSeparator()
+        more.setMenu(menu);line.addWidget(more)
         line.addStretch();close = QPushButton('Close');close.clicked.connect(self.reject);line.addWidget(close);layout.addLayout(line);self.render()
     def render(self):
         self.projects = all_projects(self.window.data_root());self.table.setRowCount(len(self.projects))
         for row, project in enumerate(self.projects):
             s = project.stats();opened = time.strftime('%Y-%m-%d %H:%M', time.localtime(s['last_opened'])) if s['last_opened'] else '—'
             current = project == self.window.project
-            for col, value in enumerate([project.name+('  · open' if current else ''), s['videos'], s['measured'], opened, str(project.folder)]):
-                item = QTableWidgetItem(str(value))
+            for col, value in enumerate(['●' if current else '', project.name, s['videos'], s['measured'], opened]):
+                item = QTableWidgetItem(str(value));item.setToolTip(('Open now · ' if current else '')+str(project.folder))
                 if current:font = item.font();font.setBold(True);item.setFont(font)
                 self.table.setItem(row, col, item)
             if current:self.table.selectRow(row)
@@ -208,7 +214,8 @@ class ProjectBrowser(QDialog):
                      lambda target:QMessageBox.information(self, 'Project exported', f'Saved {Path(target).name} ({Path(target).stat().st_size/2**20:.0f} MB).'))
     def import_file(self):
         path, _ = QFileDialog.getOpenFileName(self, 'Import project', self.window.settings.value('project_folder', str(Path.home())), f'Climb Studio project (*{EXTENSION})')
-        if not path:return
+        if path:self.import_path(path)
+    def import_path(self, path):
         self.window.settings.setValue('project_folder', str(Path(path).parent))
         def done(project):
             self.render()

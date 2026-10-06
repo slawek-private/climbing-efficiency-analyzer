@@ -42,9 +42,13 @@ Windows: `tools/windows/start_manual_viewer.cmd`.
 Mac: `tools/macos/start_manual_viewer.command` after [macOS setup](docs/SETUP_MACOS.md).
 macOS source support and an Apple Silicon CI job are provided; M3 Pro interactive validation remains required.
 
+Three places: **Measure** one climb, **Compare** climbs (table, charts, patterns,
+side by side) and **Library**. Measurements save automatically; drop videos onto
+the window to start.
+
 Organise work in **projects** (one per event or route, e.g. “SYCC Genf”) and
 export a project, optionally with its videos, as one `.climbproject` file.
-**Import & library** shows each video's resolution, frame rate, codec and storage
+**Library** shows each video's resolution, frame rate, codec and storage
 needs, and prepares smooth previews in bulk in the background; **Storage** limits
 and frees the preview cache. **Side by side** plays several attempts next to each
 other, aligned at the climb start or a named point, sized to fill the screen.

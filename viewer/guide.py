@@ -36,7 +36,7 @@ class TipsDialog(QDialog):
         super().__init__(parent);self.setWindowTitle('Recording tips');self.resize(640, 620);self.settings = settings
         layout = QVBoxLayout(self);text = QLabel(TIPS);text.setWordWrap(True);text.setTextFormat(Qt.TextFormat.RichText)
         scroll = QScrollArea();scroll.setWidgetResizable(True);holder = QWidget();inner = QVBoxLayout(holder);inner.addWidget(text);inner.addStretch();scroll.setWidget(holder);layout.addWidget(scroll, 1)
-        line = QHBoxLayout();self.again = QCheckBox('Show these tips when Climb Studio starts');self.again.setChecked(settings.value('show_tips', True, type=bool));line.addWidget(self.again);line.addStretch()
+        line = QHBoxLayout();self.again = QCheckBox('Show these tips when Climb Studio starts');self.again.setChecked(settings.value('show_tips', False, type=bool));line.addWidget(self.again);line.addStretch()
         ok = QPushButton('Got it');ok.setProperty('role', 'primary');ok.clicked.connect(self.accept);line.addWidget(ok);layout.addLayout(line)
     def done(self, result):
         self.settings.setValue('show_tips', self.again.isChecked());super().done(result)
@@ -97,22 +97,18 @@ def tab_rect(window, tabs, index):
 
 
 def steps(w):
-    workspace = lambda:w.main_tabs.setCurrentIndex(0)
+    """Five steps, shown once a video is loaded so every highlight points at real data."""
+    measure=lambda:w.show_view(w.measure_page)
     def panel(widget):
-        def before():workspace();w.measurement_scroll.ensureWidgetVisible(widget, 0, 40)
+        def before():measure();w.measurement_scroll.ensureWidgetVisible(widget, 0, 40)
         return before
+    def video_rect():
+        a, b = rect_of(w, w.image), rect_of(w, w.transport)
+        return a.united(b) if a and b else a or b
     return [
-        dict(title='Welcome to Climb Studio', text='A one-minute tour of where everything is. You can replay it any time from Help › Show tour.', target=lambda:None),
-        dict(title='Projects', text='Group videos, measurements and reports per event or route, e.g. “SYCC Genf”. Open the project browser here to create, switch, export or import projects.', target=lambda:rect_of(w, w.project_button), before=workspace),
-        dict(title='Videos in this project', text='Switch between the project’s videos here, or step through them with ← →. Add videos imports more files.', target=lambda:rect_of(w, w.collection_bar)),
-        dict(title='Import & library', text='See every video’s resolution, frame rate and storage needs, and prepare smooth previews in bulk while you do something else.', target=lambda:tab_rect(w, w.main_tabs, 1)),
-        dict(title='The video', text='Play with Space, step frames with ← → (Shift for one frame). Pinch or scroll to zoom into the picture.', target=lambda:rect_of(w, w.image), before=workspace),
-        dict(title='Timeline', text='Drag to scrub. Pinch or scroll to zoom the timeline down to single frames; marked rests, clips and chalking appear as coloured bars.', target=lambda:rect_of(w, w.precision_scrubber)),
-        dict(title='Smooth preview', text='For 4K or HEVC videos, prepare a smooth preview once: scrubbing and stepping backwards become instant. Hover any control for an explanation.', target=lambda:rect_of(w, w.preview_button)),
-        dict(title='Athlete, start and end', text='Name the athlete, then pause on the first grip and press Climb start (S), and on the fall or top press Climb end (E).', target=lambda:rect_of(w, w.boundary_box), before=panel(w.boundary_box)),
-        dict(title='Named points', text='Mark when the athlete reaches a shared point (P). Use the same names for every athlete; the last name used is kept.', target=lambda:rect_of(w, w.point_box), before=panel(w.point_box)),
-        dict(title='Left hand and right hand', text='Each hand has its own clip, rest and chalk timers. Press once to start, again to stop. Keys are shown on each button.', target=lambda:rect_of(w, w.hands_box), before=panel(w.hands_box)),
-        dict(title='Everything recorded', text='The recorded timeline and table list every interval. Click to jump, double-click to edit, Delete removes.', target=lambda:rect_of(w, w.event_timeline), before=panel(w.event_timeline)),
-        dict(title='Compare and report', text='Compare athletes, view charts and patterns, or watch several attempts Side by side aligned at the climb start.', target=lambda:tab_rect(w, w.main_tabs, 2).united(tab_rect(w, w.main_tabs, w.main_tabs.count()-1))),
-        dict(title='Save and export', text='Save athlete stores the measurements; Export all athletes writes HTML + CSV. PDF, storage, updates and these tips live in the menus.', target=lambda:rect_of(w, w.export_button)),
+        dict(title='1 · Find the moment', text='Space plays and pauses; ← → step through frames (Shift for one frame). Drag, pinch or scroll the timeline under the video to zoom down to single frames. The timecode shows exactly where you are.', target=video_rect, before=measure),
+        dict(title='2 · Start and end', text='Name the athlete. Pause on the first grip and press S, then on the fall or the top press E. The climb time appears below.', target=lambda:rect_of(w, w.boundary_box), before=panel(w.boundary_box)),
+        dict(title='3 · Time each hand', text='Clip, rest and chalk timers for the left and right hand. Press once to start at the current frame, again to stop. A running timer fills its tile and shows its time.', target=lambda:rect_of(w, w.hands_box), before=panel(w.hands_box)),
+        dict(title='4 · Named points', text='Mark when the athlete reaches a shared point, such as a rest or the roof (P). Use the same names for every athlete to compare their splits.', target=lambda:rect_of(w, w.point_box), before=panel(w.point_box)),
+        dict(title='5 · Compare and export', text='Everything saves automatically. Compare ranks every measured climb, with charts and side-by-side video; Export writes HTML, CSV and PDF. Replay this tour from Help.', target=lambda:tab_rect(w, w.main_tabs, 1)),
     ]

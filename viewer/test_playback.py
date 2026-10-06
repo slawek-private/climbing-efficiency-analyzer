@@ -76,15 +76,15 @@ def test_four_timer_shortcuts_buttons_and_typing(tmp_path,monkeypatch):
     for key in (Qt.Key.Key_L,Qt.Key.Key_R,Qt.Key.Key_Q,Qt.Key.Key_W,Qt.Key.Key_C,Qt.Key.Key_V):QTest.keyClick(w,key)
     assert len(w.document()['open_events'])==6
     assert set((e['kind'],e['hand']) for e in w.document()['open_events'])=={('clip','left'),('clip','right'),('rest','left'),('rest','right'),('chalk','left'),('chalk','right')}
-    assert all('Stop' in b.text() for b in w.hand_timer_buttons.values())
+    assert all(b.property('role')=='stop' and w.hand_timer_cancel[k].isVisibleTo(w) for k,b in w.hand_timer_buttons.items())
     w.show_frame(5);w.clip_method.setCurrentIndex(w.clip_method.findData('mouth'))
     for button in w.hand_timer_buttons.values():QTest.mouseClick(button,Qt.MouseButton.LeftButton)
     assert not w.document()['open_events'] and len(w.document()['events'])==6
     clips={e['hand']:e.get('clip_method') for e in w.document()['events'] if e['kind']=='clip'}
     assert clips=={'left':'mouth','right':None} and w.clip_method.currentData() is None
-    assert all('Start' in b.text() for b in w.hand_timer_buttons.values())
+    assert all(b.property('role')=='start' and not w.hand_timer_cancel[k].isVisibleTo(w) for k,b in w.hand_timer_buttons.items())
     assert w.draw.value()==2 and all(e['target']==1 for e in w.document()['events'] if e['kind']=='clip')
-    initial=w.theme;w.toggle_theme();assert w.theme!=initial and w.event_timeline.dark==(w.theme=='dark');w.toggle_theme();assert w.theme==initial
+    initial=w.theme;w.toggle_theme();assert w.theme!=initial and w.precision_scrubber.dark==(w.theme=='dark');w.toggle_theme();assert w.theme==initial
     assert w.table.isVisible() and w.workspace_tabs is None
     w.climber.setFocus();w.climber.selectAll();app.processEvents();QTest.keyClicks(w.climber,'Lara QW');assert w.climber.text()=='Lara QW' and not w.document()['open_events']
     w.image.setFocus();app.processEvents();w.show_frame(10);monkeypatch.setattr(w,'choose_climb_outcome',lambda:'failed');w.set_failure()

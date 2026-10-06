@@ -29,7 +29,7 @@ def main():
         simple.ROOT=root
         original_settings=simple.QSettings
         simple.QSettings=lambda *args:original_settings(str(root/'settings.ini'),QSettings.Format.IniFormat)
-        window=simple.Window();window.workspace=Workspace(root/'workspace.json');window.video_path=video;window.index_ready(index)
+        window=simple.Window();window.workspace=Workspace(root/'workspace.json');window.workspace.add(video);window.video_path=video;window.index_ready(index)
         def drain():
             end=time.monotonic()+5
             while window.decode_future is not None:
@@ -51,20 +51,22 @@ def main():
         window.history=History(docs[0]);window.saved=copy.deepcopy(docs[0]);window.draw.setValue(9);window.refresh();window.refresh_collection();window.show_frame(350);drain()
         window.resize(1450,1000);window.show();window.precision_scrubber.set_span(15)
         window.position.setText('SYNTHETIC DEMO - no people, real footage or athlete telemetry')
-        def tab(title):return next(i for i in range(window.main_tabs.count()) if window.main_tabs.tabText(i).replace('&&','&')==title)
         def settle(predicate=lambda:True,seconds=8):
             end=time.monotonic()+seconds
             while not predicate() and time.monotonic()<end:app.processEvents();time.sleep(.01)
             app.processEvents()
         from viewer.design import apply_theme
+        # A running left-hand rest shows the timers' active state.
+        window.history.document['open_events'].append({'kind':'rest','hand':'left','target':None,'start':window.reader.point(342),'confidence':1,'notes':''});window.refresh()
+        window.autosave_timer.stop();window.saved=copy.deepcopy(window.document());window.refresh_live()
         for theme in ('light','dark'):
-            apply_theme(window,theme);window.main_tabs.setCurrentIndex(0);settle();window.grab().save(str(destination/f'workspace-{theme}.png'))
-        window.main_tabs.setCurrentIndex(tab('Import & library'));settle(lambda:len(window.library.meta)==len(window.workspace.videos));window.grab().save(str(destination/'library.png'))
-        window.main_tabs.setCurrentIndex(tab('Side by side'));settle(lambda:window.sync_view.tiles and all(t.shown is not None for t in window.sync_view.tiles))
+            apply_theme(window,theme);window.show_view(window.measure_page);settle();window.grab().save(str(destination/f'workspace-{theme}.png'))
+        window.show_view(window.library);settle(lambda:len(window.library.meta)==len(window.workspace.videos));window.grab().save(str(destination/'library.png'))
+        window.show_view(window.sync_view);settle(lambda:window.sync_view.tiles and all(t.shown is not None for t in window.sync_view.tiles))
         window.sync_view.seek(20);settle(lambda:all(t.shown==t.wanted for t in window.sync_view.tiles));window.grab().save(str(destination/'side-by-side.png'))
         apply_theme(window,'light')
-        window.main_tabs.setCurrentIndex(tab('Compare athletes'));settle();window.grab().save(str(destination/'athlete-comparison.png'))
-        window.main_tabs.setCurrentIndex(tab('Charts'));window.comparison_charts.focus.setCurrentText('Athlete A');settle();window.grab().save(str(destination/'comparison-charts.png'))
+        window.show_view(window.comparison_page);window.comparison_table.selectRow(0);settle();window.grab().save(str(destination/'athlete-comparison.png'))
+        window.show_view(window.comparison_charts);window.comparison_charts.focus.setCurrentText('Athlete A');settle();window.grab().save(str(destination/'comparison-charts.png'))
         window.saved=copy.deepcopy(window.document());window.close()
     print('Captured six screenshots using synthetic data only:',destination)
     return 0

@@ -18,6 +18,11 @@ from .workspace import Workspace
 from .collection import CollectionWorker
 from .platform_runtime import GPU_BACKEND
 
+ALLOWED_KEYS=('Space','Left','Right','Ctrl+S','Ctrl+Z','Ctrl+Y','S','E','P','L','R','Q','W','C','V','Delete','Shift+Left','Shift+Right','Ctrl+[','Ctrl+]')
+
+def timecode(seconds):
+    minutes=int(seconds//60);return f'{minutes:02d}:{seconds-minutes*60:06.3f}'
+
 class SharedPointSelector(QComboBox):
     def __init__(self):
         super().__init__();self.setEditable(True);self.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
@@ -31,7 +36,8 @@ class Window(LegacyWindow):
         from .projects import find
         self.project=find(ROOT,self.settings.value('current_project',''))
         self.workspace=Workspace(self.project.workspace_file);self.session_histories={};self.session_indexes={};self.collection_worker=None
-        self.updater=None;self.release=None;self.pending_update=None
+        self.updater=None;self.release=None;self.pending_update=None;self.guidance=False;self.save_error=None
+        self.autosave_timer=QTimer();self.autosave_timer.setSingleShot(True);self.autosave_timer.setInterval(600);self.autosave_timer.timeout.connect(self.autosave)
         self.resource_monitor=None;self.preview_worker=None
         self.simple_ready=False
         self.async_decode=True;self.decoder=ThreadPoolExecutor(max_workers=1);self.decode_future=None;self.decode_requested=None;self.decode_seek=False;self.play_after_decode=False
@@ -92,7 +98,7 @@ class Window(LegacyWindow):
         scroll=QScrollArea();scroll.setWidgetResizable(True);scroll.setWidget(panel);scroll.setMinimumWidth(490);splitter.addWidget(scroll);splitter.setSizes([850,0,520])
         self.timeline.hide()
         for shortcut in self.shortcuts:
-            if shortcut.property('manual_key') not in ('Space','Left','Right','Ctrl+S','Ctrl+Z','Ctrl+Y','S','E','P','L','R','Q','W','C','V','Delete','Shift+Left','Shift+Right'):shortcut.setEnabled(False)
+            if shortcut.property('manual_key') not in ALLOWED_KEYS:shortcut.setEnabled(False)
         self.slider.sliderReleased.connect(self.finish_scrub)
         self.simple_ready=True
         from .design import build
@@ -100,7 +106,7 @@ class Window(LegacyWindow):
         points=self.workspace.shared_points();self.point_name.setText(self.settings.value('last_point','') or (points[-1] if points else 'A'))
         self.refresh_live();self.refresh_collection();self.refresh_preview_status();self.update_project_label()
     def install_timer_shortcuts(self):
-        actions={'Delete':self.delete_selected,'Shift+Left':lambda:self.step(-1,True),'Shift+Right':lambda:self.step(1,True),'S':self.set_start,'E':self.set_failure,'P':self.add_point,'L':lambda:self.toggle_hand_timer('clip','left'),'R':lambda:self.toggle_hand_timer('clip','right'),'Q':lambda:self.toggle_hand_timer('rest','left'),'W':lambda:self.toggle_hand_timer('rest','right'),'C':lambda:self.toggle_hand_timer('chalk','left'),'V':lambda:self.toggle_hand_timer('chalk','right')}
+        actions={'Ctrl+[':lambda:self.next_video(-1),'Ctrl+]':lambda:self.next_video(1),'Delete':self.delete_selected,'Shift+Left':lambda:self.step(-1,True),'Shift+Right':lambda:self.step(1,True),'S':self.set_start,'E':self.set_failure,'P':self.add_point,'L':lambda:self.toggle_hand_timer('clip','left'),'R':lambda:self.toggle_hand_timer('clip','right'),'Q':lambda:self.toggle_hand_timer('rest','left'),'W':lambda:self.toggle_hand_timer('rest','right'),'C':lambda:self.toggle_hand_timer('chalk','left'),'V':lambda:self.toggle_hand_timer('chalk','right')}
         for key,callback in actions.items():
             existing=next((s for s in self.shortcuts if s.property('manual_key')==key),None)
             if existing:existing.activated.disconnect()
@@ -138,26 +144,34 @@ class Window(LegacyWindow):
     def focus_changed(self,old,new):
         super().focus_changed(old,new)
         for shortcut in self.shortcuts:
-            if shortcut.property('manual_key') not in ('Space','Left','Right','Ctrl+S','Ctrl+Z','Ctrl+Y','S','E','P','L','R','Q','W','C','V','Delete','Shift+Left','Shift+Right'):shortcut.setEnabled(False)
+            if shortcut.property('manual_key') not in ALLOWED_KEYS:shortcut.setEnabled(False)
     def refresh(self):
         super().refresh()
         if not self.simple_ready or not self.history:return
         d=self.document();self.table.blockSignals(True);self.table.setRowCount(len(self.visible_events))
-        self.table.setHorizontalHeaderLabels(['Type','Hand','Hold/draw','Climb start s','Climb stop s','Duration s'])
+        self.table.setHorizontalHeaderLabels(['Activity','Hand','#','Start','End','Length'])
+        self.points_table.setHorizontalHeaderLabels(['Point','Video','Climb','Comment'])
+        for col,tip in enumerate(['','Seconds in the video','Seconds from climb start','']):self.points_table.horizontalHeaderItem(col).setToolTip(tip)
+        for col,tip in enumerate(['','','Hold or quickdraw number, with clip method','Seconds from climb start','Seconds from climb start','Seconds']):self.table.horizontalHeaderItem(col).setToolTip(tip)
         for row,e in enumerate(self.visible_events):
-            for col,value in enumerate(({'contact':'Hold','rest':'Rest','clip':'Clip','offwall':'Off-wall','chalk':'Chalk'}[e['kind']],e['hand'],str(e['target'] or '—')+{'mouth':' · mouth','direct':' · direct'}.get(e.get('clip_method'),''),f"{e['start']['seconds']-d['start']['seconds']:.3f}" if d['start'] else 'Start missing',f"{e['end']['seconds']-d['start']['seconds']:.3f}" if d['start'] else 'Start missing',f"{e['end']['seconds']-e['start']['seconds']:.3f}")):
-                item=QTableWidgetItem(str(value));item.setToolTip(f"Video time: {e['start']['seconds']:.3f}–{e['end']['seconds']:.3f} s");self.table.setItem(row,col,item)
+            for col,value in enumerate(({'contact':'Hold','rest':'Rest','clip':'Clip','offwall':'Off-wall','chalk':'Chalk'}[e['kind']],{'left':'Left','right':'Right','none':'—'}[e['hand']],str(e['target'] or '—')+{'mouth':' · mouth','direct':' · direct'}.get(e.get('clip_method'),''),f"{e['start']['seconds']-d['start']['seconds']:.2f}" if d['start'] else '—',f"{e['end']['seconds']-d['start']['seconds']:.2f}" if d['start'] else '—',f"{e['end']['seconds']-e['start']['seconds']:.2f}")):
+                item=QTableWidgetItem(str(value));item.setToolTip(f"Video time: {e['start']['seconds']:.3f}–{e['end']['seconds']:.3f} s"+('' if d['start'] else ' · mark the climb start for climb-relative times'));self.table.setItem(row,col,item)
         self.table.blockSignals(False)
         self.point_rows=sorted(d.get('checkpoints',[]),key=lambda p:p['point']['seconds']);self.points_table.setRowCount(len(self.point_rows))
         for row,p in enumerate(self.point_rows):
-            for col,v in enumerate((p['name'],f"{p['point']['seconds']:.3f} s",f"{p['point']['seconds']-d['start']['seconds']:.3f} s" if d['start'] and p['point']['seconds']>=d['start']['seconds'] else 'Start missing / before start',p.get('comment',''))):self.points_table.setItem(row,col,QTableWidgetItem(v))
-        self.points_table.setVisible(bool(self.point_rows));self.points_table.resizeColumnsToContents();self.refresh_live();self.update_project_label()
+            for col,v in enumerate((p['name'],f"{p['point']['seconds']:.2f} s",f"{p['point']['seconds']-d['start']['seconds']:.2f} s" if d['start'] and p['point']['seconds']>=d['start']['seconds'] else '—',p.get('comment',''))):self.points_table.setItem(row,col,QTableWidgetItem(v))
+        self.points_table.setVisible(bool(self.point_rows));self.points_table.resizeColumnsToContents();self.events_toggle.setText(('▾' if self.events_body.isVisible() else '▸')+f'  Events · {len(self.visible_events)}');self.refresh_live();self.update_project_label()
     def set_frame_step(self,value):
         self.settings.setValue('frame_step',value)
-        if hasattr(self,'step_back_button'):self.step_back_button.setText(f'← {value} frames');self.step_forward_button.setText(f'{value} frames →')
-    def sync_active(self):return hasattr(self,'sync_view') and self.main_tabs.currentWidget() is self.sync_view
+        if hasattr(self,'step_back_button'):self.step_back_button.setToolTip(f'Back {value} frames (←) · Shift+← one frame');self.step_forward_button.setToolTip(f'Forward {value} frames (→) · Shift+→ one frame')
+    def sync_active(self):return hasattr(self,'compare_tabs') and self.main_tabs.currentWidget() is self.compare_page and self.compare_tabs.currentWidget() is self.sync_view
+    def show_view(self,widget):
+        """Open a view, including those nested inside Compare."""
+        if widget in (self.comparison_page,self.comparison_charts,self.pattern_dashboard,self.sync_view):
+            self.main_tabs.setCurrentWidget(self.compare_page);self.compare_tabs.setCurrentWidget(widget)
+        else:self.main_tabs.setCurrentWidget(widget)
     def step(self,delta,single=False):
-        if self.sync_active():return self.sync_view.step(delta*(1 if single else self.frame_step.value())/30)
+        if self.sync_active():return self.sync_view.step_frames(delta*(1 if single else self.frame_step.value()))
         if not self.reader:return
         self.pause();base=getattr(self,'pending_scrub',self.decode_requested if self.decode_seek and self.decode_future is not None else self.frame_number)
         self.scrub_timer.stop()
@@ -222,7 +236,6 @@ class Window(LegacyWindow):
         number=self.decode_number;self.decode_future=None
         if number!=self.decode_requested and not self.playing:self.submit_decode();return
         self.decode_poll.stop();self.decode_seek=False;self.frame_number=number;self.image.display(rgb)
-        self.position.setText(f"Frame {number} / {len(self.reader.times)-1} · {self.reader.times[number]:.3f}s")
         if not self.slider.isSliderDown():
             self.slider.blockSignals(True);self.slider.setValue(number);self.slider.blockSignals(False)
         self.refresh_live()
@@ -275,13 +288,13 @@ class Window(LegacyWindow):
             if self.reader:self.reader.close()
             self.reader=None;self.history=None;self.video_path=Path(path);self.label_path=None;self.saved=None;self.index_ready(cached[1])
         else:super().begin_video(path)
-        self.refresh_collection()
+        self.refresh_collection();self.refresh_live()
     def closeEvent(self,event):
         if self.preview_worker and self.preview_worker.isRunning():
             self.preview_worker.requestInterruption();self.preview_worker.wait()
         if self.resource_monitor:
             self.resource_monitor.requestInterruption();self.resource_monitor.wait(7000)
-        self.remember_current()
+        self.flush_autosave();self.remember_current()
         if self.collection_worker and self.collection_worker.isRunning():
             self.collection_worker.requestInterruption();self.collection_worker.wait(5000)
         self.scrub_timer.stop();self.decode_poll.stop()
@@ -298,10 +311,22 @@ class Window(LegacyWindow):
     def refresh_live(self):
         if not self.simple_ready:return
         d=self.document();now=self.reader.times[self.frame_number] if self.reader else 0
-        if hasattr(self,"empty_hint"):self.empty_hint.setVisible(not bool(self.reader))
+        if hasattr(self,"empty_hint"):
+            loaded=bool(self.reader);opening=bool(self.worker and self.worker.isRunning())
+            for widget in (self.image,self.precision_scrubber,self.transport,self.boundary_box,self.climb_box,self.events_card):widget.setVisible(loaded)
+            self.empty_hint.setVisible(not loaded);self.empty_panel.setVisible(not loaded)
+            self.drop_title.setText(f'Opening {self.video_path.name}…' if opening and self.video_path else 'Drop climbing videos here')
+            self.drop_choose.setVisible(not opening);self.drop_note.setText('Reading the file once: checksum and every frame timestamp. Cached afterwards.' if opening else 'MP4, MOV or MKV · originals stay where they are, nothing is uploaded')
+            if loaded:self.position.setText(f'<span style="font-size:19px;font-weight:600">{timecode(now)}</span>&nbsp;&nbsp;<span style="font-size:11px;color:#8996a8">frame {self.frame_number}</span>')
+            self.start_button.setText(f"Start · {d['start']['seconds']:.3f} s" if d and d['start'] else 'Mark start');self.start_clear.setVisible(bool(d and d['start']))
+            self.end_button.setText(f"End · {d['end']['seconds']:.3f} s · "+{'failed':'fell','completed':'topped'}.get(d['outcome'],d['outcome']) if d and d['end'] else 'Mark end')
+            self.end_edit.setVisible(bool(d and d['end']));self.end_clear.setVisible(bool(d and d['end']))
+            self.save_state.setProperty('state','error' if self.save_error else 'ok');self.save_state.style().unpolish(self.save_state);self.save_state.style().polish(self.save_state)
+            self.save_state.setText('' if not self.history else '⚠ Not saved' if self.save_error else 'Saving…' if self.autosave_timer.isActive() else '✓ Saved')
+            self.save_state.setToolTip(self.save_error or ('Saved to '+str(self.label_path) if self.label_path else 'Measurements save automatically to the project’s labels folder.'))
         self.start_status.setText('Start: '+(f"{d['start']['seconds']:.3f} s in video" if d and d['start'] else 'not marked'))
         self.end_status.setText('End: '+(f"{d['end']['seconds']:.3f} s · "+{'failed':'Fell / failed','completed':'Topped'}.get(d['outcome'],d['outcome']) if d and d['end'] else 'not marked'))
-        self.duration_status.setText('Climb time  ·  '+(f"{d['end']['seconds']-d['start']['seconds']:.3f} seconds" if d and d['start'] and d['end'] else 'mark start and end'))
+        self.duration_status.setText('Climb time  '+(f"{d['end']['seconds']-d['start']['seconds']:.3f} s" if d and d['start'] and d['end'] else '—  mark start and end'))
         for kind in ('rest','clip'):
             pending=next((e for e in d['open_events'] if e['kind']==kind),None) if d else None
             current=next((e for e in d['events'] if e['kind']==kind and e['start']['seconds']<=now<e['end']['seconds']),None) if d else None
@@ -311,23 +336,18 @@ class Window(LegacyWindow):
         for (kind,hand),control in getattr(self,'hand_timer_buttons',{}).items():
             pending=next((e for e in d['open_events'] if e['kind']==kind and e['hand']==hand),None) if d else None
             current=next((e for e in d['events'] if e['kind']==kind and e['hand']==hand and e['start']['seconds']<=now<e['end']['seconds']),None) if d else None
-            key={'clip':{'left':'L','right':'R'},'rest':{'left':'Q','right':'W'},'chalk':{'left':'C','right':'V'}}[kind][hand]
-            control.setText(('■ Stop ' if pending else 'Start ')+kind+' · '+key)
             role='stop' if pending else 'start'
             if control.property('role')!=role:control.setProperty('role',role);control.style().unpolish(control);control.style().polish(control)
             visible=pending if pending and pending['start']['seconds']<=now else current
-            status=('● ' if pending else '')+f"{now-visible['start']['seconds']:.2f} s · "+('running' if pending else 'recorded') if visible else 'Seek forward to stop' if pending else 'Ready'
-
-            if kind=='chalk' and d:
-                completed=[e for e in d['events'] if e['kind']=='chalk' and e['hand']==hand]
-                status+=f" · {len(completed)}×"
-            label=self.hand_timer_status[kind,hand];label.setText(status);state='running' if pending and visible else 'recorded' if visible else 'ready'
-            if label.property('state')!=state:label.setProperty('state',state);label.style().unpolish(label);label.style().polish(label)
-            control.setEnabled(bool(d) and (not current or bool(pending)))
+            name=kind.capitalize();text=name
+            if pending and visible:text=f'■ {name} · {now-visible["start"]["seconds"]:.1f} s'
+            elif pending:text=f'■ {name} · seek forward'
+            elif visible:text=f'{name} · {now-visible["start"]["seconds"]:.1f} s ✓'
+            control.setText(text);control.setEnabled(bool(d) and (not current or bool(pending)))
+            if kind=='chalk' and d:control.setToolTip(f"{hand.capitalize()} hand chalk · {sum(1 for e in d['events'] if e['kind']=='chalk' and e['hand']==hand)} recorded · press to start or stop (key {control.key})")
+            self.hand_timer_cancel[kind,hand].setVisible(bool(pending))
         if hasattr(self,'precision_scrubber'):
             self.precision_scrubber.sync(self.reader.times[-1] if self.reader else 1,now,d)
-        if hasattr(self,'event_timeline'):
-            self.event_timeline.document=d;self.event_timeline.position=now;self.event_timeline.duration=self.reader.times[-1] if self.reader else 1;self.event_timeline.update()
         if hasattr(self,'legacy_rest_panel'):self.legacy_rest_panel.setVisible(bool(d) and any(e['kind']=='rest' and e['hand']=='none' for e in d['open_events']))
         clip_pending=bool(d) and any(e['kind']=='clip' for e in d['open_events'])
         self.clip_hand.setEnabled(not clip_pending);self.draw.setEnabled(bool(d))
@@ -434,7 +454,7 @@ class Window(LegacyWindow):
                 self.saved=copy.deepcopy(d);self.refresh();self.show_frame(min(state["frame"],len(self.reader.times)-1))
             else:self.show_frame(0)
             next_draw=max([e["target"] or 0 for e in self.document()["events"] if e["kind"]=="clip"]+[0])+1
-            self.draw.setValue(self.workspace.states.get(key,{}).get("quickdraw",next_draw));self.refresh_collection();self.refresh_preview_status()
+            self.draw.setValue(self.workspace.states.get(key,{}).get("quickdraw",next_draw));self.refresh_collection();self.refresh_preview_status();self.refresh_live();self.offer_tour()
         except Exception as error:self.error(error)
     def read_labels(self,path,quiet=False):
         try:
@@ -459,7 +479,7 @@ class Window(LegacyWindow):
         self.pause()
         from .preview_cache import PreviewWorker
         self.preview_worker=PreviewWorker(self.video_path,copy.deepcopy(self.reader.index),ROOT/'artifacts'/'preview-cache')
-        self.preview_worker.progress.connect(lambda value:self.preview_status.setText(f'Preparing local preview · {value}%'))
+        self.preview_worker.progress.connect(lambda value:self.preview_button.setText(f'Preparing preview {value}% · cancel'))
         self.preview_worker.ready.connect(self.preview_ready)
         self.preview_worker.error.connect(lambda message:self.error('Preview preparation failed: '+message))
         self.preview_worker.finished.connect(self.refresh_preview_status)
@@ -478,7 +498,7 @@ class Window(LegacyWindow):
         if not hasattr(self,'preview_button'):return
         running=bool(self.preview_worker and self.preview_worker.isRunning())
         cached=bool(self.reader and self.reader.backend=='preview')
-        self.preview_button.setText('Cancel preparation' if running else 'Smooth preview ready' if cached else 'Prepare smooth preview')
+        if not running:self.preview_button.setText('● Smooth preview' if cached else 'Prepare smooth preview')
         self.preview_button.setEnabled(bool(self.reader) and (running or not cached));self.decoder_choice.setEnabled(not cached)
         if cached:
             self.decoder_choice.blockSignals(True);self.decoder_choice.setCurrentIndex(2);self.decoder_choice.blockSignals(False)
@@ -503,14 +523,32 @@ class Window(LegacyWindow):
             if 'replacement' in locals():replacement.close()
             self.decoder_choice.blockSignals(True);self.decoder_choice.setCurrentIndex(1 if old.backend==GPU_BACKEND else 0);self.decoder_choice.blockSignals(False);self.error('Decoder unavailable: '+str(e));return
         self.reader=replacement;self.settings.setValue("decoder_backend",backend);old.close();self.show_frame(self.frame_number)
-    def save_labels(self):
-        if self.history and self.video_path and self.label_path is None:
+    def schedule_autosave(self):
+        if self.history:self.autosave_timer.start();self.refresh_live()
+    def autosave(self):
+        """Write the measurements to their label file; no dialog. Returns False when writing failed."""
+        self.autosave_timer.stop()
+        if not self.history or not self.video_path:return True
+        if self.saved==self.document() and self.label_path and self.label_path.exists():return True
+        if self.label_path is None:
             import re
             attempt=re.sub(r"[^A-Za-z0-9_-]", "_", self.document()["attempt"])
             self.label_path=self.project.labels/(self.video_path.stem+"-attempt-"+attempt+".labels.json")
-        result=super().save_labels()
-        if result:self.settings.setValue("labels_folder",str(self.label_path.parent));self.remember_current();self.refresh_collection()
+        try:
+            save(self.document(),self.label_path);self.saved=copy.deepcopy(self.document());self.save_error=None
+            self.settings.setValue("labels_folder",str(self.label_path.parent));self.remember_current()
+        except Exception as error:self.save_error=f'Not saved to {self.label_path}: {error}'
+        self.refresh_live();self.update_project_label();return self.save_error is None
+    def flush_autosave(self):
+        if self.autosave_timer.isActive() or self.dirty():return self.autosave()
+        return True
+    def save_labels(self):
+        result=self.autosave()
+        if result:self.refresh_collection();self.statusBar().showMessage('Saved '+str(self.label_path),4000)
         return result
+    def allow_change(self):
+        self.flush_autosave()
+        return super().allow_change()
     def remember_current(self):
         if not self.history or not self.video_path:return
         key=str(self.video_path.resolve());self.session_histories[key]=self.history
@@ -520,12 +558,12 @@ class Window(LegacyWindow):
         except OSError as e:self.statusBar().showMessage('Workspace could not be saved: '+str(e),10000)
     def commit(self,document):
         result=super().commit(document)
-        if result:self.remember_current();self.refresh_collection()
+        if result:self.remember_current();self.refresh_collection();self.schedule_autosave()
         return result
     def undo(self):
-        super().undo();self.remember_current();self.refresh_collection()
+        super().undo();self.remember_current();self.refresh_collection();self.schedule_autosave()
     def redo(self):
-        super().redo();self.remember_current();self.refresh_collection()
+        super().redo();self.remember_current();self.refresh_collection();self.schedule_autosave()
     def open_video(self):
         if self.worker and self.worker.isRunning():return
         folder=self.settings.value('videos_folder','') or str(ROOT/'videos')
@@ -563,7 +601,9 @@ class Window(LegacyWindow):
             state=self.workspace.states.get(path);name=state['document']['climber'] if state else Path(path).stem
             self.video_selector.addItem(name+' · '+Path(path).name)
         current=str(self.video_path.resolve()) if self.video_path else None
-        self.video_selector.setCurrentIndex(self.workspace.videos.index(current) if current in self.workspace.videos else -1);self.video_selector.blockSignals(False)
+        index=self.workspace.videos.index(current) if current in self.workspace.videos else -1
+        self.video_selector.setCurrentIndex(index);self.video_selector.blockSignals(False)
+        self.video_count.setText(f'{index+1} of {len(self.workspace.videos)}' if index>=0 else f'{len(self.workspace.videos)} videos' if self.workspace.videos else '')
         documents=list(self.workspace.documents())
         if self.document() and current:
             documents=[d for d in documents if not (d['source']['sha256']==self.document()['source']['sha256'] and d['attempt']==self.document()['attempt'])];documents.append(self.document())
@@ -571,49 +611,106 @@ class Window(LegacyWindow):
             for point in doc.get("checkpoints",[]):self.workspace.add_point_name(point["name"])
         selected_name=self.point_name.text();self.point_name.blockSignals(True);self.point_name.clear();self.point_name.addItems(self.workspace.shared_points());self.point_name.setText(selected_name);self.point_name.blockSignals(False)
         self.comparison_documents=documents;overview,points,holds=rows(documents)
-        activity_rows=[]
-        for doc in documents:
-            for event in sorted(doc['events'],key=lambda e:e['start']['seconds']):
-                if event['kind'] not in ('rest','clip','chalk'):continue
-                base=doc['start']['seconds'] if doc['start'] else None
-                activity_rows.append([doc['climber'],event['kind'],event['hand'],event['start']['seconds']-base if base is not None else None,event['end']['seconds']-base if base is not None else None,event['end']['seconds']-event['start']['seconds']])
-        self.comparison_activity_table.setRowCount(len(activity_rows))
-        for row,values in enumerate(activity_rows):
-            for col,value in enumerate(values):self.comparison_activity_table.setItem(row,col,QTableWidgetItem('Start missing' if value is None else f'{value:.2f}' if isinstance(value,float) else str(value)))
-        columns=[('Athlete','athlete'),('Result','outcome'),('Climb (s)','climb_seconds'),('Total rest incl. chalk (s)','total_rest_marked_seconds'),('Total rest episodes','total_rest_marked_count'),('Total rest share','total_marked_rest_share'),('Dedicated rest (s)','rest_marked_seconds'),('Dedicated rest count','rest_marked_count'),('Clip (s)','clip_marked_seconds'),('Clip count','clip_marked_count'),('Mouth clips','clip_mouth_count'),('Direct clips','clip_direct_count'),('Chalk count','chalk_marked_count'),('Chalk (s)','chalk_marked_seconds'),('Left chalk (s)','left_chalk_marked_seconds'),('Right chalk (s)','right_chalk_marked_seconds'),('Left rest (s)','left_rest_marked_seconds'),('Right rest (s)','right_rest_marked_seconds'),('Left clip (s)','left_clip_marked_seconds'),('Right clip (s)','right_clip_marked_seconds')]
-        names=sorted({p['point'] for p in points});headers=[c[0] for c in columns]+[name+' (s)' for name in names]
-        table=self.comparison_table;table.setColumnCount(len(headers));table.setHorizontalHeaderLabels(headers);table.setRowCount(len(overview));self.comparison_rows=overview
-        for row,summary in enumerate(overview):
-            for col,(title,key) in enumerate(columns):
-                value=summary[key];text='Unmarked' if value is None else f'{value*100:.1f}%' if key in ('marked_rest_share','total_marked_rest_share') else f'{value:.2f}' if isinstance(value,float) else str(value)
-                table.setItem(row,col,QTableWidgetItem(text))
-            for col,name in enumerate(names,len(columns)):
-                arrivals=[p['seconds_from_climb_start'] for p in points if p['point']==name and all(p[k]==summary[k] for k in ('athlete','attempt','video')) and p['seconds_from_climb_start'] is not None]
-                item=QTableWidgetItem(' / '.join(f'{t:.2f}' for t in arrivals) or 'Unmarked')
-                best=min((p['seconds_from_climb_start'] for p in points if p['point']==name and p['seconds_from_climb_start'] is not None),default=None)
-                if arrivals and min(arrivals)==best:
-                    from PySide6.QtGui import QColor
-                    item.setBackground(QColor('#def3e9'));item.setForeground(QColor('#116047'));item.setToolTip('Fastest marked arrival at this point')
-                table.setItem(row,col,item)
+        self.fill_leaderboard(overview,points)
         self.pattern_dashboard.update_documents(documents)
         self.comparison_charts.set_documents(documents)
-        table.resizeColumnsToContents();self.collection_summary.setText(f'{len(self.workspace.videos)} videos · {len(documents)} measured attempts · Fastest point arrivals highlighted in green')
+        measured=sum(1 for o in overview if o['climb_seconds'] is not None)
+        self.collection_summary.setText(f'{measured} measured climb'+('s' if measured!=1 else '')+f' of {len(self.workspace.videos)} videos · times in seconds from climb start · fastest arrival at each point in green · “—” means not marked')
+    def fill_leaderboard(self,overview,points):
+        """Seven questions a coach asks, one row per attempt; every other number lives in the exports."""
+        from PySide6.QtGui import QColor
+        from PySide6.QtCore import Qt
+        class Sortable(QTableWidgetItem):
+            def __lt__(self,other):
+                a,b=self.data(Qt.ItemDataRole.UserRole),other.data(Qt.ItemDataRole.UserRole)
+                if a is None or b is None:return (a is None)<(b is None)
+                return a<b
+        self.comparison_rows=overview
+        names=sorted({p['point'] for p in points},key=str.casefold)
+        headers=['Athlete','Result','Climb','Recovery','Clips','Clip method']+names
+        table=self.comparison_table;table.setSortingEnabled(False);table.clear();table.setColumnCount(len(headers));table.setHorizontalHeaderLabels(headers);table.setRowCount(len(overview))
+        tips=['','','Climb start to marked end','Dedicated rest and chalking, overlaps counted once, as a share of the climb','Completed clips · average clip time','Rope to mouth / direct, where marked']+['Arrival from climb start · gap to the fastest athlete']*len(names)
+        for col,tip in enumerate(tips):table.horizontalHeaderItem(col).setToolTip(tip)
+        shares=[o['total_marked_rest_share'] for o in overview if o['total_marked_rest_share'] is not None];top=max(shares,default=0)
+        best={name:min((p['seconds_from_climb_start'] for p in points if p['point']==name and p['seconds_from_climb_start'] is not None),default=None) for name in names}
+        for row,o in enumerate(overview):
+            clips=o['clip_marked_count'];average=o['clip_marked_seconds']/clips if clips else None
+            methods=' / '.join(f'{o[k]} {w}' for k,w in (('clip_mouth_count','mouth'),('clip_direct_count','direct')) if o[k]) if o['clip_mouth_count'] is not None else None
+            result={'Fell / failed':'Fell','unknown':'—'}.get(o['outcome'],o['outcome'])
+            cells=[(o['athlete']+('' if o['attempt']=='1' else f' · {o["attempt"]}'),o['athlete'].casefold()),(result,o['outcome']),
+                   (f"{o['climb_seconds']:.1f} s" if o['climb_seconds'] is not None else '—',o['climb_seconds']),
+                   (f"{o['total_marked_rest_share']*100:.1f} %" if o['total_marked_rest_share'] is not None else '—',o['total_marked_rest_share']),
+                   (f'{clips} · {average:.1f} s avg' if average is not None else '—',clips),(methods or '—',methods)]
+            for name in names:
+                arrivals=[p['seconds_from_climb_start'] for p in points if p['point']==name and all(p[k]==o[k] for k in ('athlete','attempt','video')) and p['seconds_from_climb_start'] is not None]
+                first=min(arrivals,default=None);gap=first-best[name] if first is not None and best[name] is not None else None
+                cells.append((('—' if first is None else f'{first:.1f} s · '+('fastest' if gap<0.0005 else f'+{gap:.1f}')),first))
+            for col,(text,key) in enumerate(cells):
+                item=Sortable(text);item.setData(Qt.ItemDataRole.UserRole,key)
+                if col==0:item.setData(Qt.ItemDataRole.UserRole+1,row)
+                if col==3:item.setData(Qt.ItemDataRole.UserRole+2,top)
+                if col>=6 and text.endswith('fastest'):item.setForeground(QColor('#189a72'))
+                if text=='—':item.setToolTip('Not marked')
+                table.setItem(row,col,item)
+        table.setItemDelegateForColumn(3,self.bar_delegate);table.setSortingEnabled(True);table.resizeColumnsToContents();table.horizontalHeader().setStretchLastSection(True);table.horizontalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignLeft|Qt.AlignmentFlag.AlignVCenter)
+        # Fit the leaderboard to its rows so the detail below gets the space.
+        table.setMaximumHeight(table.horizontalHeader().height()+sum(table.rowHeight(r) for r in range(table.rowCount()))+6 if table.rowCount()<12 else 16777215)
+        if table.columnWidth(3)<140:table.setColumnWidth(3,140)
+        self.comparison_selected()
+    def comparison_summary(self,row):
+        from PySide6.QtCore import Qt
+        item=self.comparison_table.item(row,0)
+        index=item.data(Qt.ItemDataRole.UserRole+1) if item else None
+        return self.comparison_rows[index] if index is not None and index<len(self.comparison_rows) else None
+    def comparison_selected(self):
+        table=self.comparison_activity_table;summary=self.comparison_summary(self.comparison_table.currentRow()) if self.comparison_table.selectedItems() else None
+        if not summary:
+            table.setRowCount(0);self.comparison_detail_title.setText('Select an athlete to see every rest, clip and chalk.');return
+        doc=next((d for d in self.comparison_documents if d['climber']==summary['athlete'] and d['attempt']==summary['attempt'] and d['source']['file']==summary['video']),None)
+        events=[e for e in sorted(doc['events'],key=lambda e:e['start']['seconds']) if e['kind'] in ('rest','clip','chalk')] if doc else []
+        base=doc['start']['seconds'] if doc and doc['start'] else None
+        self.comparison_detail_title.setText(f"{summary['athlete']} · attempt {summary['attempt']} · {len(events)} rests, clips and chalks")
+        table.setRowCount(len(events))
+        for row,e in enumerate(events):
+            values=[e['kind'].capitalize(),e['hand'].capitalize(),str(e['target']) if e['kind']=='clip' and e['target'] else '—',{'mouth':'Rope to mouth','direct':'Direct'}.get(e.get('clip_method'),'—') if e['kind']=='clip' else '—',
+                    f"{e['start']['seconds']-base:.2f}" if base is not None else '—',f"{e['end']['seconds']-base:.2f}" if base is not None else '—',f"{e['end']['seconds']-e['start']['seconds']:.2f}"]
+            for col,value in enumerate(values):table.setItem(row,col,QTableWidgetItem(value))
     def comparison_open(self,row,col):
-        if not 0<=row<len(self.comparison_documents):return
-        summary=self.comparison_rows[row]
+        summary=self.comparison_summary(row)
+        if not summary:return
         for path,state in self.workspace.states.items():
             d=state['document']
             if all(d[k]==summary[j] for k,j in [('climber','athlete'),('attempt','attempt')]) and d['source']['file']==summary['video']:
-                self.select_video(self.workspace.videos.index(path));self.main_tabs.setCurrentIndex(0);return
+                self.select_video(self.workspace.videos.index(path));self.show_view(self.measure_page);return
     def data_root(self):return ROOT
     def labels_folder(self):return self.project.labels
     def update_project_label(self):
-        if hasattr(self,'project_button'):self.project_button.setText('▤  '+self.project.name)
-        self.setWindowTitle(APP_NAME+' · v'+__version__+' · '+self.project.name+(' · '+self.video_path.name+(' *' if self.dirty() else '') if self.video_path else ''))
+        if hasattr(self,'project_button'):self.project_button.setText(self.project.name+'  ▾')
+        self.setWindowTitle(APP_NAME+' · '+self.project.name+(' · '+self.video_path.name if self.video_path else ''))
+    def toggle_events(self):
+        self.events_body.setVisible(not self.events_body.isVisible());self.settings.setValue('events_open',self.events_body.isVisible());self.refresh()
+    def show_about(self):
+        QMessageBox.about(self,'About '+APP_NAME,f'<b>{APP_NAME} {__version__}</b><p>Frame-accurate climbing video measurements, fully local.</p><p>MIT License · <a href="https://github.com/slawek-private/climbing-efficiency-analyzer">github.com/slawek-private/climbing-efficiency-analyzer</a></p>')
+    def show_diagnostics(self):
+        QMessageBox.information(self,'Diagnostics',f'{APP_NAME} {__version__}\n\n'+(self.usage_label.toolTip() if self.usage_label.toolTip().startswith('App CPU') else self.usage_label.text())+f'\n\nData folder: {ROOT}\nDecoder: '+(self.reader.backend if self.reader else 'no video open'))
+    VIDEO_SUFFIXES=('.mp4','.mov','.mkv','.m4v')
+    def dropped_paths(self,event):
+        return [Path(u.toLocalFile()) for u in event.mimeData().urls() if u.isLocalFile() and Path(u.toLocalFile()).suffix.lower() in self.VIDEO_SUFFIXES+('.climbproject',)] if event.mimeData().hasUrls() else []
+    def dragEnterEvent(self,event):
+        if self.dropped_paths(event):event.acceptProposedAction()
+        else:event.ignore()
+    def dragMoveEvent(self,event):self.dragEnterEvent(event)
+    def dropEvent(self,event):
+        paths=self.dropped_paths(event)
+        if not paths:return event.ignore()
+        event.acceptProposedAction();projects=[p for p in paths if p.suffix.lower()=='.climbproject'];videos=[str(p) for p in paths if p.suffix.lower()!='.climbproject']
+        if videos:self.settings.setValue('videos_folder',str(Path(videos[0]).parent));self.add_videos(videos);self.show_view(self.measure_page)
+        if projects:self.show_projects(('import_path',projects[0]))
     def show_projects(self,action=None):
         from .projects import ProjectBrowser
         dialog=ProjectBrowser(self)
-        if action:QTimer.singleShot(0,{'new':dialog.new,'import':dialog.import_file,'export':dialog.export_current}[action])
+        if isinstance(action,tuple):QTimer.singleShot(0,lambda:dialog.import_path(action[1]))
+        elif action:QTimer.singleShot(0,{'new':dialog.new,'import':dialog.import_file,'export':dialog.export_current}[action])
         dialog.exec()
     def open_project(self,project):
         """Switch to another project; the current one is saved first. Returns False when the user cancels."""
@@ -656,15 +753,18 @@ class Window(LegacyWindow):
         TipsDialog(self,self.settings).exec()
     def show_tour(self):
         from .guide import Tour,steps
-        self.main_tabs.setCurrentIndex(0);self.tour=Tour(self,steps(self),lambda:self.settings.setValue('tour_done',True));self.tour.start()
+        self.main_tabs.setCurrentIndex(0)
+        def done():self.settings.setValue('tour_done',True);self.tour=None
+        self.tour=Tour(self,steps(self),done);self.tour.start()
     def first_run(self):
-        """Recording tips (until dismissed for good), the tour once, then the daily update check."""
+        """Clean the cache and check for updates. Guidance waits for a loaded video."""
         from . import storage
         storage.remove_incomplete(ROOT);self.enforce_storage()
-        if self.settings.value('show_tips',True,type=bool):self.show_tips()
-        if not self.settings.value('tour_done',False,type=bool):self.show_tour()
+        if self.settings.value('show_tips',False,type=bool):self.show_tips()
         import time
         if self.settings.value('auto_update',True,type=bool) and time.time()-float(self.settings.value('update_checked',0))>20*3600:self.check_updates(manual=False)
+    def offer_tour(self):
+        if self.guidance and self.reader and not self.settings.value('tour_done',False,type=bool) and not getattr(self,'tour',None):QTimer.singleShot(700,self.show_tour)
     def check_updates(self,manual=False):
         from .updater import Updater
         import time
@@ -771,4 +871,4 @@ def main(video=None):
     app=QApplication.instance() or QApplication(sys.argv);app.setStyle('Fusion')
     from PySide6.QtGui import QIcon
     app.setWindowIcon(QIcon(str(Path(__file__).resolve().parent/'assets'/'icon.png')));window=Window(video)
-    available=app.primaryScreen().availableGeometry();window.resize(min(1450,available.width()-40),min(1000,available.height()-40));window.show();window.start_resource_monitor();QTimer.singleShot(400,window.first_run);return app.exec()
+    available=app.primaryScreen().availableGeometry();window.resize(min(1450,available.width()-40),min(1000,available.height()-40));window.guidance=True;window.show();window.start_resource_monitor();QTimer.singleShot(400,window.first_run);return app.exec()
