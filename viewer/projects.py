@@ -85,7 +85,7 @@ def export_project(project, target, include_videos=True, progress=lambda text:No
                     name = 'videos/'+unique(Path(path).name, used_videos);archive.write(path, name, compress_type=zipfile.ZIP_STORED);videos[path] = name
                 else:videos[path] = path
             files = [p for p in project.labels.glob('*.labels.json')] if project.labels.exists() else []
-            files += [Path(s['label_path']) for s in data.get('states', {}).values() if s.get('label_path') and Path(s['label_path']).is_file()]
+            files += [Path(s['label_path']) for s in [*data.get('states', {}).values(),*[e['state'] for e in data.get('attempts',[])]] if s.get('label_path') and Path(s['label_path']).is_file()]
             for file in files:
                 if str(file.resolve()) in labels:continue
                 name = 'labels/'+unique(file.name, used_labels);archive.write(file, name);labels[str(file.resolve())] = name
@@ -96,7 +96,8 @@ def export_project(project, target, include_videos=True, progress=lambda text:No
             states = {}
             for path, state in data.get('states', {}).items():
                 label = state.get('label_path');states[videos.get(path, path)] = {**state, 'label_path': labels.get(str(Path(label).resolve()), label) if label else None}
-            archive.writestr('workspace.json', json.dumps({**data, 'videos': [videos[p] for p in data.get('videos', [])], 'states': states}, indent=2))
+            attempts=[{'path':videos.get(e['path'],e['path']),'state':{**e['state'],'label_path':labels.get(str(Path(e['state']['label_path']).resolve()),e['state']['label_path']) if e['state'].get('label_path') else None}} for e in data.get('attempts',[])]
+            archive.writestr('workspace.json', json.dumps({**data,'attempts':attempts, 'videos': [videos[p] for p in data.get('videos', [])], 'states': states}, indent=2))
             archive.writestr('project.json', json.dumps({'format': FORMAT, 'name': project.name, 'exported_with': __version__, 'exported': time.time()}, indent=2))
         temporary.replace(target);return target
     finally:temporary.unlink(missing_ok=True)
@@ -129,7 +130,8 @@ def import_project(root, source, progress=lambda text:None, cancelled=lambda:Fal
             shutil.rmtree(project.folder, ignore_errors=True);raise
     def local(path):return str((project.folder/path).resolve()) if path and not Path(path).is_absolute() else path
     states = {local(p):{**s, 'label_path': local(s.get('label_path'))} for p, s in data.get('states', {}).items()}
-    project.workspace_file.write_text(json.dumps({**data, 'videos': [local(p) for p in data.get('videos', [])], 'states': states}, indent=2), encoding='utf-8')
+    attempts=[{'path':local(e['path']),'state':{**e['state'],'label_path':local(e['state'].get('label_path'))}} for e in data.get('attempts',[])]
+    project.workspace_file.write_text(json.dumps({**data,'attempts':attempts, 'videos': [local(p) for p in data.get('videos', [])], 'states': states}, indent=2), encoding='utf-8')
     return project
 
 

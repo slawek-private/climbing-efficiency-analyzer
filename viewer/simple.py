@@ -36,7 +36,7 @@ class Window(LegacyWindow):
         from .projects import find
         self.project=find(ROOT,self.settings.value('current_project',''))
         self.workspace=Workspace(self.project.workspace_file);self.session_histories={};self.session_indexes={};self.collection_worker=None
-        self.updater=None;self.release=None;self.pending_update=None;self.guidance=False;self.save_error=None
+        self.updater=None;self.release=None;self.pending_update=None;self.guidance=False;self.save_error=None;self.workspace_error=None
         self.autosave_timer=QTimer();self.autosave_timer.setSingleShot(True);self.autosave_timer.setInterval(600);self.autosave_timer.timeout.connect(self.autosave)
         self.resource_monitor=None;self.preview_worker=None
         self.simple_ready=False
@@ -123,12 +123,14 @@ class Window(LegacyWindow):
             if now['seconds']<=pending['start']['seconds']:
                 self.statusBar().showMessage('Advance the video before stopping this timer.',4000);return
             closed=make_event(pending,now)
-            if kind=='clip' and self.clip_method.currentData():closed['clip_method']=self.clip_method.currentData()
             d['events'].append(closed);d['open_events'].remove(pending)
         else:
             if any(e['kind']==kind and e['hand']==hand and e['start']['seconds']<=now['seconds']<e['end']['seconds'] for e in d['events']):
-                self.statusBar().showMessage('This hand already has a marked interval here. Edit it in Recorded.',5000);return
-            d['open_events'].append({'kind':kind,'hand':hand,'target':self.draw.value() if kind=='clip' else None,'start':now,'confidence':1,'notes':''})
+                event=next(e for e in d['events'] if e['kind']==kind and e['hand']==hand and e['start']['seconds']<=now['seconds']<e['end']['seconds'])
+                self.events_body.show();self.select_timeline_event(event['id']);self.edit_event();return
+            event={'kind':kind,'hand':hand,'target':self.draw.value() if kind=='clip' else None,'start':now,'confidence':1,'notes':''}
+            if kind=='clip' and self.clip_method.currentData():event['clip_method']=self.clip_method.currentData()
+            d['open_events'].append(event)
         d['reviewed']={k:False for k in d['reviewed']}
         if self.commit(d) and pending and kind=='clip':
             self.clip_method.setCurrentIndex(0)
@@ -274,6 +276,8 @@ class Window(LegacyWindow):
             self.pause();self.statusBar().showMessage('Frame is loading. Mark once the requested frame is visible.',4000);return False
         return bool(self.reader)
     def begin_video(self,path):
+        if not self.flush_autosave():return
+        if not Path(path).is_file():return self.locate_video(path)
         self.remember_current()
         self.workspace.add(path)
         self.scrub_timer.stop();self.decode_poll.stop()
@@ -294,7 +298,8 @@ class Window(LegacyWindow):
             self.preview_worker.requestInterruption();self.preview_worker.wait()
         if self.resource_monitor:
             self.resource_monitor.requestInterruption();self.resource_monitor.wait(7000)
-        self.flush_autosave();self.remember_current()
+        if not self.flush_autosave():event.ignore();return
+        self.remember_current()
         if self.collection_worker and self.collection_worker.isRunning():
             self.collection_worker.requestInterruption();self.collection_worker.wait(5000)
         self.scrub_timer.stop();self.decode_poll.stop()
@@ -314,16 +319,21 @@ class Window(LegacyWindow):
         if hasattr(self,"empty_hint"):
             loaded=bool(self.reader);opening=bool(self.worker and self.worker.isRunning())
             for widget in (self.image,self.precision_scrubber,self.transport,self.boundary_box,self.climb_box,self.events_card):widget.setVisible(loaded)
-            self.empty_hint.setVisible(not loaded);self.empty_panel.setVisible(not loaded)
+            self.empty_hint.setVisible(not loaded);self.empty_panel.hide();self.measure_page.widget(0).layout().activate();self.measurement_scroll.setVisible(loaded and not self.settings.value('inspector_hidden',False,type=bool))
+            self.active_timers.setVisible(loaded and not self.measurement_scroll.isVisible() and bool(d and d['open_events']))
+            self.active_timers.setText(' · '.join(f"{e['hand'].capitalize()} {e['kind']} running: {max(0,now-e['start']['seconds']):.1f} s" for e in (d['open_events'] if d else [])))
             self.drop_title.setText(f'Opening {self.video_path.name}…' if opening and self.video_path else 'Drop climbing videos here')
             self.drop_choose.setVisible(not opening);self.drop_note.setText('Reading the file once: checksum and every frame timestamp. Cached afterwards.' if opening else 'MP4, MOV or MKV · originals stay where they are, nothing is uploaded')
             if loaded:self.position.setText(f'<span style="font-size:19px;font-weight:600">{timecode(now)}</span>&nbsp;&nbsp;<span style="font-size:11px;color:#8996a8">frame {self.frame_number}</span>')
-            self.start_button.setText(f"Start · {d['start']['seconds']:.3f} s" if d and d['start'] else 'Mark start');self.start_clear.setVisible(bool(d and d['start']))
-            self.end_button.setText(f"End · {d['end']['seconds']:.3f} s · "+{'failed':'fell','completed':'topped'}.get(d['outcome'],d['outcome']) if d and d['end'] else 'Mark end')
+            self.start_button.setText(f"Replace start · {d['start']['seconds']:.3f} s" if d and d['start'] else 'Mark start');self.start_clear.setVisible(bool(d and d['start']))
+            self.end_button.setText(f"Replace end · {d['end']['seconds']:.3f} s · "+{'failed':'fell','completed':'topped'}.get(d['outcome'],d['outcome']) if d and d['end'] else 'Mark end')
             self.end_edit.setVisible(bool(d and d['end']));self.end_clear.setVisible(bool(d and d['end']))
-            self.save_state.setProperty('state','error' if self.save_error else 'ok');self.save_state.style().unpolish(self.save_state);self.save_state.style().polish(self.save_state)
-            self.save_state.setText('' if not self.history else '⚠ Not saved' if self.save_error else 'Saving…' if self.autosave_timer.isActive() else '✓ Saved')
-            self.save_state.setToolTip(self.save_error or ('Saved to '+str(self.label_path) if self.label_path else 'Measurements save automatically to the project’s labels folder.'))
+            failure=self.save_error or self.workspace_error or self.workspace.load_error
+            self.save_state.setProperty('state','error' if failure else 'ok');self.save_state.setStyleSheet('font-weight:600;' if failure else '')
+            persisted=bool(self.label_path and self.label_path.exists() and self.saved==d)
+            self.save_state.setText('⚠ Not saved' if failure else '' if not d else 'Saving…' if self.autosave_timer.isActive() else '✓ Saved' if persisted else 'No changes saved yet')
+            self.save_state.setToolTip(failure or ('Saved to '+str(self.label_path) if persisted else 'Make a measurement or choose Save to create a labels file.'))
+            self.save_banner.setVisible(bool(failure));self.save_detail.setText(failure or '')
         self.start_status.setText('Start: '+(f"{d['start']['seconds']:.3f} s in video" if d and d['start'] else 'not marked'))
         self.end_status.setText('End: '+(f"{d['end']['seconds']:.3f} s · "+{'failed':'Fell / failed','completed':'Topped'}.get(d['outcome'],d['outcome']) if d and d['end'] else 'not marked'))
         self.duration_status.setText('Climb time  '+(f"{d['end']['seconds']-d['start']['seconds']:.3f} s" if d and d['start'] and d['end'] else '—  mark start and end'))
@@ -337,13 +347,14 @@ class Window(LegacyWindow):
             pending=next((e for e in d['open_events'] if e['kind']==kind and e['hand']==hand),None) if d else None
             current=next((e for e in d['events'] if e['kind']==kind and e['hand']==hand and e['start']['seconds']<=now<e['end']['seconds']),None) if d else None
             role='stop' if pending else 'start'
-            if control.property('role')!=role:control.setProperty('role',role);control.style().unpolish(control);control.style().polish(control)
+            if control.property('role')!=role:control.setProperty('role',role);control.setStyleSheet('')
             visible=pending if pending and pending['start']['seconds']<=now else current
-            name=kind.capitalize();text=name
-            if pending and visible:text=f'■ {name} · {now-visible["start"]["seconds"]:.1f} s'
+            name=kind.capitalize();text='Start '+name.lower()
+            if pending and visible:text=f'Stop {name.lower()}\n{now-visible["start"]["seconds"]:.1f} s'
             elif pending:text=f'■ {name} · seek forward'
-            elif visible:text=f'{name} · {now-visible["start"]["seconds"]:.1f} s ✓'
-            control.setText(text);control.setEnabled(bool(d) and (not current or bool(pending)))
+            elif visible:text=f'{name} · {visible["end"]["seconds"]-visible["start"]["seconds"]:.1f} s\nEdit interval'
+            control.setText(text);control.setEnabled(bool(d))
+            if pending and kind=='clip':control.setToolTip(f"Quickdraw {pending['target']} · {pending.get('clip_method','method not set')} · captured when started")
             if kind=='chalk' and d:control.setToolTip(f"{hand.capitalize()} hand chalk · {sum(1 for e in d['events'] if e['kind']=='chalk' and e['hand']==hand)} recorded · press to start or stop (key {control.key})")
             self.hand_timer_cancel[kind,hand].setVisible(bool(pending))
         if hasattr(self,'precision_scrubber'):
@@ -454,7 +465,7 @@ class Window(LegacyWindow):
                 self.saved=copy.deepcopy(d);self.refresh();self.show_frame(min(state["frame"],len(self.reader.times)-1))
             else:self.show_frame(0)
             next_draw=max([e["target"] or 0 for e in self.document()["events"] if e["kind"]=="clip"]+[0])+1
-            self.draw.setValue(self.workspace.states.get(key,{}).get("quickdraw",next_draw));self.refresh_collection();self.refresh_preview_status();self.refresh_live();self.offer_tour()
+            self.draw.setValue(self.workspace.states.get(key,{}).get("quickdraw",next_draw));self.refresh_collection();self.refresh_preview_status();self.refresh_live();self.offer_tour();self.apply_comparison_document()
         except Exception as error:self.error(error)
     def read_labels(self,path,quiet=False):
         try:
@@ -475,6 +486,8 @@ class Window(LegacyWindow):
         if self.preview_worker and self.preview_worker.isRunning():
             self.preview_worker.requestInterruption();self.preview_status.setText('Cancelling preview preparation…');return
         if not self.reader:return
+        if self.library.bulk and self.library.bulk.isRunning():
+            self.statusBar().showMessage('A preview queue is running. Manage or cancel it in Library.',6000);return
         if self.reader.backend=='preview':return
         self.pause()
         from .preview_cache import PreviewWorker
@@ -523,39 +536,83 @@ class Window(LegacyWindow):
             if 'replacement' in locals():replacement.close()
             self.decoder_choice.blockSignals(True);self.decoder_choice.setCurrentIndex(1 if old.backend==GPU_BACKEND else 0);self.decoder_choice.blockSignals(False);self.error('Decoder unavailable: '+str(e));return
         self.reader=replacement;self.settings.setValue("decoder_backend",backend);old.close();self.show_frame(self.frame_number)
+    def toggle_inspector(self):
+        hidden=not self.settings.value('inspector_hidden',False,type=bool)
+        self.settings.setValue('inspector_hidden',hidden);self.inspector_button.setText('Show controls' if hidden else 'Hide controls');self.refresh_live()
+    def set_route(self):
+        if not self.history:return
+        route,ok=QInputDialog.getText(self,'Route identity','Use the same route name only for attempts on the same route.',text=self.document()['route'])
+        if ok and route.strip():
+            d=copy.deepcopy(self.document());d['route']=route.strip();self.commit(d)
+    def new_attempt(self):
+        if not self.reader or not self.flush_autosave():return
+        self.remember_current();self.workspace.archive(self.video_path)
+        old=self.document();doc=empty_labels(copy.deepcopy(old['source']));doc['climber']=old['climber'];doc['route']=old['route']
+        doc['attempt']=str(max([int(d['attempt']) for d in self.workspace.documents() if d['source']['sha256']==doc['source']['sha256'] and d['attempt'].isdigit()]+[0])+1)
+        self.history=History(doc);self.saved=None;self.label_path=None;self.draw.setValue(1)
+        self.autosave();self.refresh();self.refresh_collection()
+    def choose_attempt(self):
+        if not self.reader or not self.flush_autosave():return
+        key=str(self.video_path.resolve());entries=[e for e in self.workspace.attempts if e['path']==key]
+        if not entries:return self.statusBar().showMessage('No earlier attempts. Choose New attempt to record another climb.',6000)
+        names=[f"{i+1}. {e['state']['document']['climber']} · attempt {e['state']['document']['attempt']}" for i,e in enumerate(entries)]
+        chosen,ok=QInputDialog.getItem(self,'Open attempt','Saved attempts',names,0,False)
+        if not ok:return
+        entry=entries[names.index(chosen)];self.remember_current();self.workspace.archive(key);self.workspace.attempts.remove(entry)
+        state=entry['state'];self.history=History(state['document']);self.saved=copy.deepcopy(self.document());self.label_path=Path(state['label_path']) if state['label_path'] else None
+        self.remember_current();self.refresh();self.refresh_collection();self.show_frame(state['frame'])
+    def locate_video(self,path):
+        from .library import checksum
+        chosen,_=QFileDialog.getOpenFileName(self,'Locate original video — checksum must match',self.settings.value('videos_folder',''),'Video (*.mp4 *.mov *.mkv *.m4v)')
+        if not chosen:return
+        try:self.workspace.relink(path,chosen,checksum(chosen))
+        except (ValueError,OSError) as error:return self.error(error)
+        self.session_histories.pop(str(Path(path).resolve()),None);self.refresh_collection();self.begin_video(Path(chosen))
+    def save_copy(self):
+        if not self.history:return
+        path,_=QFileDialog.getSaveFileName(self,'Save measurements copy',str(self.project.labels/'measurements.labels.json'),'Labels (*.labels.json)')
+        if not path:return
+        previous=self.label_path;self.label_path=Path(path)
+        if not self.autosave():self.label_path=previous
+    def show_save_folder(self):
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QDesktopServices
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.project.labels)))
     def schedule_autosave(self):
         if self.history:self.autosave_timer.start();self.refresh_live()
     def autosave(self):
         """Write the measurements to their label file; no dialog. Returns False when writing failed."""
         self.autosave_timer.stop()
         if not self.history or not self.video_path:return True
-        if self.saved==self.document() and self.label_path and self.label_path.exists():return True
+        if self.saved==self.document() and self.label_path and self.label_path.exists() and not self.save_error:
+            self.remember_current();self.refresh_live();return self.workspace_error is None
+        if not self.document().get('attempt_id'):
+            self.document()['attempt_id']=uuid4().hex;self.label_path=None
         if self.label_path is None:
-            import re
-            attempt=re.sub(r"[^A-Za-z0-9_-]", "_", self.document()["attempt"])
-            self.label_path=self.project.labels/(self.video_path.stem+"-attempt-"+attempt+".labels.json")
+            self.label_path=self.project.labels/(self.document()['source']['sha256']+'-'+self.document()['attempt_id']+'.labels.json')
         try:
             save(self.document(),self.label_path);self.saved=copy.deepcopy(self.document());self.save_error=None
             self.settings.setValue("labels_folder",str(self.label_path.parent));self.remember_current()
         except Exception as error:self.save_error=f'Not saved to {self.label_path}: {error}'
-        self.refresh_live();self.update_project_label();return self.save_error is None
+        self.refresh_live();self.update_project_label();return self.save_error is None and self.workspace_error is None
     def flush_autosave(self):
-        if self.autosave_timer.isActive() or self.dirty():return self.autosave()
+        if self.autosave_timer.isActive() or self.dirty() or self.save_error or self.workspace_error:return self.autosave()
         return True
     def save_labels(self):
         result=self.autosave()
         if result:self.refresh_collection();self.statusBar().showMessage('Saved '+str(self.label_path),4000)
         return result
     def allow_change(self):
-        self.flush_autosave()
+        if not self.flush_autosave():return False
         return super().allow_change()
     def remember_current(self):
         if not self.history or not self.video_path:return
         key=str(self.video_path.resolve());self.session_histories[key]=self.history
         self.workspace.remember(self.video_path,self.document(),self.label_path,self.frame_number)
         self.workspace.states[key]['quickdraw']=self.draw.value()
-        try:self.workspace.save()
-        except OSError as e:self.statusBar().showMessage('Workspace could not be saved: '+str(e),10000)
+        try:self.workspace.save();self.workspace_error=None
+        except OSError as e:self.workspace_error='Workspace not saved: '+str(e)
+        return self.workspace_error is None
     def commit(self,document):
         result=super().commit(document)
         if result:self.remember_current();self.refresh_collection();self.schedule_autosave()
@@ -599,23 +656,25 @@ class Window(LegacyWindow):
         self.video_selector.blockSignals(True);self.video_selector.clear()
         for path in self.workspace.videos:
             state=self.workspace.states.get(path);name=state['document']['climber'] if state else Path(path).stem
-            self.video_selector.addItem(name+' · '+Path(path).name)
+            self.video_selector.addItem(name+' · '+Path(path).name+(' · Missing — locate' if not Path(path).is_file() else ''))
         current=str(self.video_path.resolve()) if self.video_path else None
         index=self.workspace.videos.index(current) if current in self.workspace.videos else -1
         self.video_selector.setCurrentIndex(index);self.video_selector.blockSignals(False)
         self.video_count.setText(f'{index+1} of {len(self.workspace.videos)}' if index>=0 else f'{len(self.workspace.videos)} videos' if self.workspace.videos else '')
         documents=list(self.workspace.documents())
         if self.document() and current:
-            documents=[d for d in documents if not (d['source']['sha256']==self.document()['source']['sha256'] and d['attempt']==self.document()['attempt'])];documents.append(self.document())
+            documents=[d for d in documents if not (d.get('attempt_id')==self.document().get('attempt_id') if d.get('attempt_id') else d['source']['sha256']==self.document()['source']['sha256'] and d['attempt']==self.document()['attempt'])];documents.append(self.document())
         for doc in documents:
             for point in doc.get("checkpoints",[]):self.workspace.add_point_name(point["name"])
         selected_name=self.point_name.text();self.point_name.blockSignals(True);self.point_name.clear();self.point_name.addItems(self.workspace.shared_points());self.point_name.setText(selected_name);self.point_name.blockSignals(False)
-        self.comparison_documents=documents;overview,points,holds=rows(documents)
-        self.fill_leaderboard(overview,points)
-        self.pattern_dashboard.update_documents(documents)
-        self.comparison_charts.set_documents(documents)
-        measured=sum(1 for o in overview if o['climb_seconds'] is not None)
-        self.collection_summary.setText(f'{measured} measured climb'+('s' if measured!=1 else '')+f' of {len(self.workspace.videos)} videos · times in seconds from climb start · fastest arrival at each point in green · “—” means not marked')
+        self.compare_scope.set_documents(documents);self.refresh_comparison()
+    def refresh_comparison(self):
+        documents=self.compare_scope.chosen();self.comparison_documents=documents;overview,points,_=rows(documents)
+        self.fill_leaderboard(overview,points);self.pattern_dashboard.update_documents(documents)
+        self.comparison_charts.checkpoint=self.compare_scope.point.currentText();self.comparison_charts.set_documents(documents)
+        reference=documents[0]['climber']+' · '+documents[0]['attempt'] if documents else 'none'
+        self.collection_summary.setText(f'{len(documents)} attempts · route {self.compare_scope.route.currentText()} · reference {reference}. Gaps compare the same checkpoint. Marked recovery is descriptive; lower is not necessarily better. Review status appears in each metric’s tooltip.')
+        if self.sync_active():self.sync_view.activate()
     def fill_leaderboard(self,overview,points):
         """Seven questions a coach asks, one row per attempt; every other number lives in the exports."""
         from PySide6.QtGui import QColor
@@ -627,12 +686,13 @@ class Window(LegacyWindow):
                 return a<b
         self.comparison_rows=overview
         names=sorted({p['point'] for p in points},key=str.casefold)
-        headers=['Athlete','Result','Climb','Recovery','Clips','Clip method']+names
+        headers=['Athlete','Result','Climb','Marked recovery','Clips','Clip method']+names+['Review status']
         table=self.comparison_table;table.setSortingEnabled(False);table.clear();table.setColumnCount(len(headers));table.setHorizontalHeaderLabels(headers);table.setRowCount(len(overview))
-        tips=['','','Climb start to marked end','Dedicated rest and chalking, overlaps counted once, as a share of the climb','Completed clips · average clip time','Rope to mouth / direct, where marked']+['Arrival from climb start · gap to the fastest athlete']*len(names)
+        tips=['','','Climb start to marked end','Dedicated rest and chalking, overlaps counted once, as a share of the climb','Completed clips · average clip time','Rope to mouth / direct, where marked']+['Arrival from climb start · gap to the reference attempt']*len(names)+['Boundary / recovery / clip review. Unfinished timers remain provisional.']
         for col,tip in enumerate(tips):table.horizontalHeaderItem(col).setToolTip(tip)
         shares=[o['total_marked_rest_share'] for o in overview if o['total_marked_rest_share'] is not None];top=max(shares,default=0)
-        best={name:min((p['seconds_from_climb_start'] for p in points if p['point']==name and p['seconds_from_climb_start'] is not None),default=None) for name in names}
+        reference=overview[0] if overview else {}
+        best={name:min((p['seconds_from_climb_start'] for p in points if p['point']==name and all(p[k]==reference.get(k) for k in ('athlete','attempt','video','attempt_id')) and p['seconds_from_climb_start'] is not None),default=None) for name in names}
         for row,o in enumerate(overview):
             clips=o['clip_marked_count'];average=o['clip_marked_seconds']/clips if clips else None
             methods=' / '.join(f'{o[k]} {w}' for k,w in (('clip_mouth_count','mouth'),('clip_direct_count','direct')) if o[k]) if o['clip_mouth_count'] is not None else None
@@ -642,14 +702,19 @@ class Window(LegacyWindow):
                    (f"{o['total_marked_rest_share']*100:.1f} %" if o['total_marked_rest_share'] is not None else '—',o['total_marked_rest_share']),
                    (f'{clips} · {average:.1f} s avg' if average is not None else '—',clips),(methods or '—',methods)]
             for name in names:
-                arrivals=[p['seconds_from_climb_start'] for p in points if p['point']==name and all(p[k]==o[k] for k in ('athlete','attempt','video')) and p['seconds_from_climb_start'] is not None]
+                arrivals=[p['seconds_from_climb_start'] for p in points if p['point']==name and all(p[k]==o[k] for k in ('athlete','attempt','video','attempt_id')) and p['seconds_from_climb_start'] is not None]
                 first=min(arrivals,default=None);gap=first-best[name] if first is not None and best[name] is not None else None
-                cells.append((('—' if first is None else f'{first:.1f} s · '+('fastest' if gap<0.0005 else f'+{gap:.1f}')),first))
+                cells.append((('—' if first is None else f'{first:.1f} s · '+('reference missing' if gap is None else f'{gap:+.1f} s vs ref')),first))
+            document=self.comparison_documents[row];reviewed=[name for key,name in [('boundaries','boundaries'),('rests','recovery'),('clips','clips')] if document['reviewed'].get(key)]
+            status=(f"{len(document['open_events'])} unfinished · " if document['open_events'] else '')+('Reviewed: '+', '.join(reviewed) if reviewed else 'Not reviewed')
+            cells.append((status,status))
             for col,(text,key) in enumerate(cells):
                 item=Sortable(text);item.setData(Qt.ItemDataRole.UserRole,key)
                 if col==0:item.setData(Qt.ItemDataRole.UserRole+1,row)
                 if col==3:item.setData(Qt.ItemDataRole.UserRole+2,top)
-                if col>=6 and text.endswith('fastest'):item.setForeground(QColor('#189a72'))
+                doc=self.comparison_documents[row];review_key={2:'boundaries',3:'rests',4:'clips',5:'clips'}.get(col,'boundaries')
+                pending=any(e['kind'] in ({'rest','chalk'} if col==3 else {'clip'} if col in (4,5) else {'rest','clip','chalk','contact','offwall'}) for e in doc['open_events'])
+                item.setToolTip(('Unfinished timer — provisional. ' if pending else '')+('Reviewed' if doc['reviewed'].get(review_key) and doc['reviewed'].get('boundaries') else 'Not reviewed — marked measurements only'))
                 if text=='—':item.setToolTip('Not marked')
                 table.setItem(row,col,item)
         table.setItemDelegateForColumn(3,self.bar_delegate);table.setSortingEnabled(True);table.resizeColumnsToContents();table.horizontalHeader().setStretchLastSection(True);table.horizontalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignLeft|Qt.AlignmentFlag.AlignVCenter)
@@ -666,7 +731,7 @@ class Window(LegacyWindow):
         table=self.comparison_activity_table;summary=self.comparison_summary(self.comparison_table.currentRow()) if self.comparison_table.selectedItems() else None
         if not summary:
             table.setRowCount(0);self.comparison_detail_title.setText('Select an athlete to see every rest, clip and chalk.');return
-        doc=next((d for d in self.comparison_documents if d['climber']==summary['athlete'] and d['attempt']==summary['attempt'] and d['source']['file']==summary['video']),None)
+        doc=next((d for d in self.comparison_documents if d['climber']==summary['athlete'] and d['attempt']==summary['attempt'] and d['source']['file']==summary['video'] and d.get('attempt_id','')==summary.get('attempt_id','')),None)
         events=[e for e in sorted(doc['events'],key=lambda e:e['start']['seconds']) if e['kind'] in ('rest','clip','chalk')] if doc else []
         base=doc['start']['seconds'] if doc and doc['start'] else None
         self.comparison_detail_title.setText(f"{summary['athlete']} · attempt {summary['attempt']} · {len(events)} rests, clips and chalks")
@@ -678,10 +743,29 @@ class Window(LegacyWindow):
     def comparison_open(self,row,col):
         summary=self.comparison_summary(row)
         if not summary:return
-        for path,state in self.workspace.states.items():
+        records=list(self.workspace.states.items())+[(e['path'],e['state']) for e in self.workspace.attempts]
+        for path,state in records:
             d=state['document']
-            if all(d[k]==summary[j] for k,j in [('climber','athlete'),('attempt','attempt')]) and d['source']['file']==summary['video']:
-                self.select_video(self.workspace.videos.index(path));self.show_view(self.measure_page);return
+            if all(d[k]==summary[j] for k,j in [('climber','athlete'),('attempt','attempt')]) and d['source']['file']==summary['video'] and d.get('attempt_id','')==summary.get('attempt_id',''):
+                self.open_comparison_document(path,d,state.get('frame',0));return
+    def open_comparison_document(self,path,doc,frame):
+        if not self.flush_autosave():return
+        if not Path(path).is_file():return self.locate_video(path)
+        self.pending_comparison=(copy.deepcopy(doc),frame)
+        if self.video_path and str(self.video_path.resolve())==path:
+            self.apply_comparison_document()
+        else:self.begin_video(Path(path))
+        self.show_view(self.measure_page)
+    def apply_comparison_document(self):
+        if not getattr(self,'pending_comparison',None) or not self.reader:return
+        doc,frame=self.pending_comparison
+        if doc['source']['sha256']!=self.reader.index['source']['sha256']:return
+        self.pending_comparison=None
+        if self.document().get('attempt_id')!=doc.get('attempt_id'):
+            self.remember_current();self.workspace.archive(self.video_path)
+            self.workspace.attempts=[e for e in self.workspace.attempts if e['state']['document'].get('attempt_id')!=doc.get('attempt_id')]
+        self.history=History(doc);self.saved=copy.deepcopy(doc);self.label_path=self.project.labels/(doc['source']['sha256']+'-'+doc['attempt_id']+'.labels.json') if doc.get('attempt_id') else None
+        self.remember_current();self.refresh();self.show_frame(frame)
     def data_root(self):return ROOT
     def labels_folder(self):return self.project.labels
     def update_project_label(self):
@@ -739,10 +823,16 @@ class Window(LegacyWindow):
         from .storage import StorageDialog
         StorageDialog(self).exec();self.library.render()
     def current_digest(self):return self.reader.index['source']['sha256'] if self.reader else None
+    def protected_digests(self):
+        keep={self.current_digest()}-{None}
+        keep.update(t.reader.index['source']['sha256'] for t in self.sync_view.tiles)
+        bulk=self.library.bulk
+        if bulk and bulk.isRunning():keep.update(m['sha256'] for p,m in self.library.meta.items() if p in bulk.paths and 'sha256' in m)
+        return keep
     def enforce_storage(self,keep=()):
         from . import storage
         limit=float(self.settings.value('cache_limit_gb',storage.DEFAULT_LIMIT_GB))*2**30
-        evicted=storage.enforce_limit(ROOT,limit,{self.current_digest(),*keep}-{None})
+        evicted=storage.enforce_limit(ROOT,limit,self.protected_digests()|set(keep))
         if evicted:self.statusBar().showMessage(f'Storage limit reached: removed {len(evicted)} least recently used smooth preview(s).',10000)
     def preview_prepared(self,digest):
         """A background job finished a preview: switch the open video to it and keep the cache within its limit."""
@@ -753,6 +843,7 @@ class Window(LegacyWindow):
         TipsDialog(self,self.settings).exec()
     def show_tour(self):
         from .guide import Tour,steps
+        self.settings.setValue('inspector_hidden',False);self.refresh_live();self.inspector_button.setText('Hide controls')
         self.main_tabs.setCurrentIndex(0)
         def done():self.settings.setValue('tour_done',True);self.tour=None
         self.tour=Tour(self,steps(self),done);self.tour.start()
@@ -764,7 +855,7 @@ class Window(LegacyWindow):
         import time
         if self.settings.value('auto_update',True,type=bool) and time.time()-float(self.settings.value('update_checked',0))>20*3600:self.check_updates(manual=False)
     def offer_tour(self):
-        if self.guidance and self.reader and not self.settings.value('tour_done',False,type=bool) and not getattr(self,'tour',None):QTimer.singleShot(700,self.show_tour)
+        if self.guidance and self.reader and not self.settings.value('tour_done',False,type=bool):self.statusBar().showMessage('New to Climb Studio? Choose Help → Show tour when you are ready.',12000)
     def check_updates(self,manual=False):
         from .updater import Updater
         import time
@@ -779,28 +870,33 @@ class Window(LegacyWindow):
     def update_available(self,release):
         version=release['tag_name'].lstrip('v')
         if not self.update_manual and self.settings.value('skipped_version','')==version:return
-        from .updater import can_self_update
+        from .updater import can_self_update,compatibility_reason
         from .platform_runtime import self_update_blocker
-        self.release=release;automatic=can_self_update()
-        reason='' if automatic else ' · '+((self_update_blocker() if getattr(sys,'frozen',False) else None) or 'Running from source: update with git pull, or download the installer.')
+        self.release=release;blocked=compatibility_reason(release);automatic=can_self_update() and not blocked
+        reason='' if automatic else ' · '+(blocked or (self_update_blocker() if getattr(sys,'frozen',False) else None) or 'Running from source: update with git pull, or download the installer.')
         self.update_text.setText(f'<b>Climb Studio {version}</b> is available (you have {__version__}).'+reason)
         self.update_buttons['install'].setText('Update now' if automatic else 'Download');self.update_buttons['install'].setEnabled(True);self.update_banner.show()
     def update_action(self,key):
         from PySide6.QtCore import QUrl
         from PySide6.QtGui import QDesktopServices
-        from .updater import can_self_update
+        from .updater import can_self_update,compatibility_reason
         if key=='later':self.update_banner.hide()
         elif key=='skip':self.settings.setValue('skipped_version',self.release['tag_name'].lstrip('v'));self.update_banner.hide()
         elif key=='notes':QDesktopServices.openUrl(QUrl(self.release['html_url']))
         elif key=='restart':self.close()
         elif key=='install':
-            if not can_self_update():QDesktopServices.openUrl(QUrl(self.release['html_url']));return
+            if not can_self_update() or compatibility_reason(self.release):QDesktopServices.openUrl(QUrl(self.release['html_url']));return
+            from .updater import pick_assets
+            name,_,_=pick_assets(self.release);size=next((a.get('size',0) for a in self.release.get('assets',[]) if a['name']==name),0)
+            from .storage import human
+            review=QMessageBox(self);review.setWindowTitle('Review update');review.setText(f"Climb Studio {__version__} → {self.release['tag_name']} · {human(size)}\nCompatible with this installation. Measurements are kept. Download now, then restart when ready.");review.setDetailedText(self.release.get('body','No release notes provided.'));review.setStandardButtons(QMessageBox.StandardButton.Ok|QMessageBox.StandardButton.Cancel)
+            if review.exec()!=QMessageBox.StandardButton.Ok:return
             self.update_buttons['install'].setEnabled(False);self.update_text.setText('Downloading the update…');self.updater.download(self.release)
     def update_downloaded(self,launcher):
         self.pending_update=launcher;version=self.release['tag_name'].lstrip('v')
         self.update_text.setText(f'Climb Studio {version} is ready. Restart to finish updating; your work is saved first.')
         b=self.update_buttons['install'];b.setText('Restart now');b.setEnabled(True);b.clicked.disconnect();b.clicked.connect(lambda:self.update_action('restart'))
-        if QMessageBox.question(self,'Update ready',f'Climb Studio {version} has been downloaded and verified. Restart now to finish the update?')==QMessageBox.StandardButton.Yes:self.close()
+        # Leave the restart decision in the banner; never interrupt annotation with a modal prompt.
     def update_failed(self,message):
         if self.update_manual or self.update_banner.isVisible():
             self.update_text.setText('Update problem: '+message);self.update_buttons['install'].setEnabled(True);self.update_banner.show()
@@ -832,16 +928,17 @@ class Window(LegacyWindow):
         self.apply_reset(choice==all_videos)
     def apply_reset(self,all_videos=False,athlete=None):
         self.remember_current();key=str(self.video_path.resolve()) if self.video_path else None
-        targets=[p for p,s in self.workspace.states.items() if s["document"]["climber"]==athlete] if athlete else list(self.workspace.states) if all_videos else [key]
+        records=[(p,s,False) for p,s in self.workspace.states.items()]+[(e['path'],e['state'],True) for e in self.workspace.attempts]
+        targets=[r for r in records if r[1]['document']['climber']==athlete] if athlete else records if all_videos else [r for r in records if r[0]==key and not r[2]]
         try:
-            for path in targets:
-                if path not in self.workspace.states:continue
-                state=self.workspace.states[path];old=state['document'];fresh=empty_labels(old['source']);fresh.update(climber=old['climber'],attempt=old['attempt'])
-                from uuid import uuid4
+            for path,state,archived in targets:
+                old=state['document'];fresh=empty_labels(old['source']);fresh.update(climber=old['climber'],attempt=old['attempt'],route=old['route'],attempt_id=old.get('attempt_id',fresh['attempt_id']))
                 backup=self.project.backups/(Path(path).stem+'-'+str(uuid4())+'.labels.json');save(old,backup)
                 if state['label_path']:save(fresh,state['label_path'])
-                self.workspace.remember(path,fresh,state['label_path'],0);self.session_histories[path]=History(fresh)
-                if path==key:self.history=self.session_histories[path];self.saved=copy.deepcopy(fresh)
+                if archived:state['document']=fresh;state['frame']=0
+                else:
+                    self.workspace.remember(path,fresh,state['label_path'],0);self.session_histories[path]=History(fresh)
+                    if path==key:self.history=self.session_histories[path];self.saved=copy.deepcopy(fresh)
             self.workspace.save()
             if self.history:self.refresh();self.show_frame(0)
             self.refresh_collection();self.statusBar().showMessage('Measurements cleared. Previous measurements backed up in '+str(self.project.backups),10000)
@@ -855,8 +952,8 @@ class Window(LegacyWindow):
                 from .pdf_report import export_pdf
                 source=Path(path).with_name(Path(path).stem+'-source.html')
                 export_comparison(self.comparison_documents,source)
-                focus=self.comparison_charts.focus.currentText()
-                export_pdf(source,path,None if focus=='All athletes' else focus)
+                focus=self.comparison_documents[0]['climber'] if self.comparison_documents else None
+                export_pdf(source,path,focus)
                 self.statusBar().showMessage('PDF and source HTML/CSV saved locally.',10000)
             except Exception as error:self.error(error)
     def export_all(self):
@@ -864,11 +961,11 @@ class Window(LegacyWindow):
         if not self.comparison_documents:return self.error('Add videos and measure at least one climb first.')
         path,_=QFileDialog.getSaveFileName(self,'Export this workspace comparison',str(self.project.reports/'all-athletes.html'),'HTML (*.html)')
         if path:
-            try:export_comparison(self.comparison_documents,path);self.statusBar().showMessage('All workspace measurements exported as HTML and CSV.',10000)
+            try:export_comparison(self.comparison_documents,path);self.statusBar().showMessage('Selected comparison exported as HTML and CSV.',10000)
             except Exception as e:self.error(e)
 
 def main(video=None):
     app=QApplication.instance() or QApplication(sys.argv);app.setStyle('Fusion')
     from PySide6.QtGui import QIcon
     app.setWindowIcon(QIcon(str(Path(__file__).resolve().parent/'assets'/'icon.png')));window=Window(video)
-    available=app.primaryScreen().availableGeometry();window.resize(min(1450,available.width()-40),min(1000,available.height()-40));window.guidance=True;window.show();window.start_resource_monitor();QTimer.singleShot(400,window.first_run);return app.exec()
+    available=app.primaryScreen().availableGeometry();window.resize(min(1450,available.width()-40),min(1000,available.height()-40));window.guidance=True;window.show();QTimer.singleShot(0,lambda:window.resize(min(1450,available.width()-40),min(1000,available.height()-40)));window.start_resource_monitor();QTimer.singleShot(400,window.first_run);return app.exec()

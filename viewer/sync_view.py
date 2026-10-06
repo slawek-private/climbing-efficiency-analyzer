@@ -3,7 +3,7 @@ import bisect
 import math
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from PySide6.QtCore import Qt, QThread, Signal, QTimer, QElapsedTimer
+from PySide6.QtCore import Qt, QThread, Signal, QTimer, QElapsedTimer,QEvent
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QComboBox, QSlider, QFrame
 from .app import ImageView
 from .labels import ROOT
@@ -116,7 +116,7 @@ class SyncView(QWidget):
         self.t = 0.;self.lo = 0.;self.hi = 1.;self.playing = False;self.clock = QElapsedTimer();self.play_from = 0.
         self.timer = QTimer(self);self.timer.setInterval(15);self.timer.timeout.connect(self.tick)
         layout = QVBoxLayout(self);layout.setContentsMargins(4, 4, 4, 4);layout.setSpacing(4)
-        top = QHBoxLayout();top.addWidget(QLabel('Align at'));self.anchor = QComboBox();self.anchor.setMinimumWidth(170);self.anchor.currentIndexChanged.connect(self.rebuild);top.addWidget(self.anchor)
+        top = QHBoxLayout();top.addWidget(QLabel('Align at'));self.anchor = QComboBox();self.anchor.setMinimumWidth(170);self.anchor.currentIndexChanged.connect(self.alignment_changed);top.addWidget(self.anchor)
         self.anchor.setToolTip('The moment that becomes 0 s in every video: climb start, or the first arrival at a shared named point.')
         reload = QPushButton('Reload videos');reload.setProperty('role', 'quiet');reload.clicked.connect(self.load);top.addWidget(reload)
         self.note = QLabel();self.note.setObjectName('muted');top.addWidget(self.note, 1)
@@ -129,6 +129,12 @@ class SyncView(QWidget):
         self.speed = QComboBox();self.speed.addItems([f'{s:g}×' for s in SPEEDS]);self.speed.setCurrentIndex(2);self.speed.currentIndexChanged.connect(self.restart_clock);controls.addWidget(self.speed)
         self.slider = QSlider(Qt.Orientation.Horizontal);self.slider.valueChanged.connect(lambda ms:self.seek(ms/1000));self.slider.sliderPressed.connect(self.pause);controls.addWidget(self.slider, 1)
         self.position = QLabel();self.position.setMinimumWidth(150);controls.addWidget(self.position);layout.addLayout(controls)
+    def eventFilter(self,obj,event):
+        if event.type()==QEvent.Type.MouseButtonDblClick:
+            tile=next((t for t in self.tiles if t.view.viewport() is obj),None)
+            if tile:
+                self.pause();self.window.open_comparison_document(tile.path,tile.document,tile.shown if tile.shown is not None else tile.wanted);return True
+        return super().eventFilter(obj,event)
     def toggle_full_screen(self):
         if self.window.isFullScreen():self.window.showNormal()
         else:self.window.showFullScreen()
@@ -136,16 +142,25 @@ class SyncView(QWidget):
     def anchors(self):
         names = sorted({p['name'] for d in self.window.workspace.documents() for p in d.get('checkpoints', [])}, key=str.casefold)
         return [('Climb start', 'start')]+[(f'Point {n} · first arrival', n) for n in names]
+    def alignment_changed(self):
+        name=self.anchor.currentData();index=self.window.compare_scope.point.findText('Climb start' if name=='start' else name)
+        if index>=0:self.window.compare_scope.point.setCurrentIndex(index)
+    def selected_entries(self):
+        records=[(p,s) for p,s in self.window.workspace.states.items()]+[(e['path'],e['state']) for e in self.window.workspace.attempts]
+        from .compare_scope import identity
+        chosen=self.window.compare_scope.chosen()
+        return [(p,{'document':d}) for d in chosen for p,s in records if identity(s['document'])==identity(d) and Path(p).is_file()][:16]
     def activate(self):
         self.window.remember_current()
-        current = self.anchor.currentData() or 'start'
+        self.window.compare_scope.set_documents(self.window.workspace.documents())
+        chosen=self.window.compare_scope.point.currentText();current='start' if chosen=='Climb start' else chosen
         self.anchor.blockSignals(True);self.anchor.clear()
         for title, value in self.anchors():self.anchor.addItem(title, value)
         self.anchor.setCurrentIndex(max(0, self.anchor.findData(current)));self.anchor.blockSignals(False)
         self.load()
     def load(self):
         if self.worker and self.worker.isRunning():return
-        paths = [p for p in self.window.workspace.videos if p in self.window.workspace.states and Path(p).is_file()]
+        paths = list(dict.fromkeys(p for p,_ in self.selected_entries()))
         missing = [p for p in paths if p not in self.indexes]
         if missing:
             self.note.setText(f'Indexing {len(missing)} video(s)… first time only');self.worker = IndexAll(missing, dict(self.window.session_indexes))
@@ -158,22 +173,22 @@ class SyncView(QWidget):
         self.tiles = [];self.area.tiles = []
     def rebuild(self):
         if self.worker and self.worker.isRunning():return
-        self.clear();anchor = self.anchor.currentData() or 'start';skipped = []
+        saved_time=self.t;self.clear();anchor = self.anchor.currentData() or 'start';skipped = []
         from .preview_cache import open_preview
-        for path in self.window.workspace.videos:
-            state = self.window.workspace.states.get(path);index = self.indexes.get(path)
+        for path,state in self.selected_entries():
+            index = self.indexes.get(path)
             if not state or not index:continue
             d = state['document'];seconds = anchor_seconds(d, anchor)
             if seconds is None or index['source']['sha256'] != d['source']['sha256']:skipped.append(d['climber']);continue
             # One decoder per tile; 'auto' uses the hardware decoder (VideoToolbox / CUDA) when the file allows.
             reader = open_preview(ROOT/'artifacts'/'preview-cache', index) or VideoReader(path, index, 'auto')
-            self.tiles.append(Tile(d, reader, seconds))
+            tile=Tile(d,reader,seconds);tile.path=path;tile.view.viewport().installEventFilter(self);tile.view.setToolTip('Double-click to measure this attempt at the displayed frame.');self.tiles.append(tile)
         self.area.set_tiles(self.tiles)
         self.lo = min((-t.anchor for t in self.tiles), default=0.);self.hi = max((t.reader.times[-1]-t.anchor for t in self.tiles), default=1.)
         self.slider.blockSignals(True);self.slider.setRange(int(self.lo*1000), int(self.hi*1000));self.slider.blockSignals(False)
         what = 'climb start' if anchor == 'start' else 'point '+anchor
         self.note.setText(f'{len(self.tiles)} video(s) aligned at {what}'+(f" · not marked: {', '.join(skipped)}" if skipped else '') if self.tiles else 'Mark climb start (or the chosen point) in at least one video to compare.')
-        self.seek(0.)
+        self.seek(saved_time)
         if self.tiles:self.timer.start()
     def seek(self, t):
         self.t = max(self.lo, min(self.hi, t))
@@ -184,7 +199,15 @@ class SyncView(QWidget):
     def step(self, seconds):self.pause();self.seek(self.t+seconds)
     def step_frames(self, count):
         """Move by the shortest frame duration among the videos, so no video skips a frame."""
-        self.step(count*self.frame_seconds())
+        self.pause()
+        for _ in range(abs(count)):
+            candidates=[]
+            for tile in self.tiles:
+                times=tile.reader.times;position=frame_at(times,tile.anchor+self.t)
+                i=position+1 if count>0 else bisect.bisect_left(times,tile.anchor+self.t-1e-6)-1
+                if 0<=i<len(times):candidates.append(times[i]-tile.anchor)
+            if not candidates:break
+            self.seek(min(candidates) if count>0 else max(candidates))
     def frame_seconds(self):
         gaps = [sorted(b-a for a, b in zip(t.reader.times, t.reader.times[1:]))[len(t.reader.times)//2-1] for t in self.tiles if len(t.reader.times) > 2]
         return min(gaps, default=1/30)

@@ -19,11 +19,27 @@ def gpu_candidate(codec,width,height):
 
 # Waits for the running app to quit, swaps in the new bundle (restoring the old one on failure) and relaunches.
 MAC_SWAP='''pid="$1"; app="$2"; incoming="$app.incoming"; previous="$app.previous"
-for _ in $(seq 1 600); do case "$(ps -o stat= -p "$pid" 2>/dev/null)" in ""|Z*) break;; esac; sleep 0.2; done
-rm -rf "$previous"
-if mv "$app" "$previous" && mv "$incoming" "$app"; then rm -rf "$previous"; else rm -rf "$app"; mv "$previous" "$app"; fi
-${CLIMB_STUDIO_OPEN:-open} "$app"
+for _ in $(seq 1 "${CLIMB_STUDIO_WAIT_STEPS:-600}"); do case "$(ps -o stat= -p "$pid" 2>/dev/null)" in ""|Z*) break;; esac; sleep 0.2; done
+case "$(ps -o stat= -p "$pid" 2>/dev/null)" in ""|Z*) ;; *) exit 1;; esac
+[ -d "$app" ] && [ -d "$incoming" ] && [ ! -e "$previous" ] || exit 1
+# Do not remove either bundle unless the first rename has succeeded.
+mv "$app" "$previous" || exit 1
+if ! mv "$incoming" "$app"; then mv "$previous" "$app"; exit 1; fi
+if "${CLIMB_STUDIO_OPEN:-open}" "$app"; then
+    rm -rf "$previous"
+else
+    mv "$app" "$incoming" && mv "$previous" "$app"
+    "${CLIMB_STUDIO_OPEN:-open}" "$app"
+    exit 1
+fi
 '''
+
+def update_target():
+    import platform
+    machine=platform.machine().lower()
+    arch={'aarch64':'arm64','amd64':'x64','x86_64':'x64'}.get(machine,machine)
+    os_version=platform.mac_ver()[0] if sys.platform=='darwin' else platform.version()
+    return sys.platform,arch,tuple(int(x) for x in os_version.split('.') if x.isdigit())
 
 def app_bundle():
     return Path(sys.executable).resolve().parents[2]

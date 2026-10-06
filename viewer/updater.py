@@ -35,6 +35,22 @@ def pick_assets(release, suffix=SUFFIX):
     return (installer, assets[installer] if installer else None, assets.get('SHA256SUMS.txt'))
 
 
+def compatibility_reason(release,current=__version__,target=None):
+    """Fail closed when a release cannot establish a supported upgrade path."""
+    from .platform_runtime import update_target
+    target=target or update_target();manifest=release.get('update_manifest')
+    if not isinstance(manifest,dict):return 'Compatibility information is unavailable. Use the release page.'
+    try:
+        if manifest['format']!=1 or manifest['version']!=release['tag_name'].lstrip('v'):return 'The compatibility manifest does not match this release.'
+        minimum=version_tuple(manifest['minimum_app']);maximum=version_tuple(manifest['maximum_app']);running=version_tuple(current)
+        if not minimum or not maximum or not running or not minimum<=running<=maximum:return 'This version requires an intermediate update; see the release notes.'
+        supported=next((p for p in manifest['platforms'] if p['os']==target[0] and p['arch']==target[1]),None)
+        if supported is None:return 'No installer supports this operating system and architecture.'
+        if not target[2] or target[2]<tuple(supported['minimum_os']):return 'Your operating system is older than this release supports.'
+        if manifest['migration']!='additive-v1':return 'This release needs a manual data migration; see the release notes.'
+    except (KeyError,TypeError,ValueError):return 'Invalid compatibility information; update was not started.'
+    return None
+
 def expected_digest(sums, name):
     for line in sums.splitlines():
         parts = line.split()
@@ -75,9 +91,20 @@ class Updater(QObject):
         if reply.error() != QNetworkReply.NetworkError.NoError:return self.failed.emit('Could not reach GitHub: '+reply.errorString())
         try:release = json.loads(bytes(reply.readAll()).decode())
         except ValueError:return self.failed.emit('Unexpected answer from GitHub')
-        if is_newer(release.get('tag_name', '')):self.available.emit(release)
+        if is_newer(release.get('tag_name', '')):
+            url=next((a['browser_download_url'] for a in release.get('assets',[]) if a['name']=='update.json'),None)
+            if not url:self.available.emit(release);return
+            manifest=self.network.get(self.request(url));manifest.finished.connect(lambda:self.got_manifest(manifest,release))
         else:self.current.emit()
+    def got_manifest(self,reply,release):
+        import json
+        try:
+            if reply.error()==QNetworkReply.NetworkError.NoError:release['update_manifest']=json.loads(bytes(reply.readAll()).decode())
+        except (ValueError,UnicodeError):pass
+        reply.deleteLater();self.available.emit(release)
     def download(self, release):
+        reason=compatibility_reason(release)
+        if reason:return self.failed.emit(reason)
         name, url, sums_url = pick_assets(release)
         if not url or not sums_url:return self.failed.emit('This release has no verified installer for your system; download it from the release page.')
         sums = self.network.get(self.request(sums_url))

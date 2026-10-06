@@ -53,8 +53,14 @@ needs, and prepares smooth previews in bulk in the background; **Storage** limit
 and frees the preview cache. **Side by side** plays several attempts next to each
 other, aligned at the climb start or a named point, sized to fill the screen.
 Installed apps update themselves from GitHub Releases after checking the
-installer's SHA-256. On first launch, recording tips and a short guided tour
-explain where everything is.
+installer's SHA-256 and release compatibility manifest (OS, architecture and
+supported source versions). Downloads wait for an explicit restart. Recording
+tips and the guided tour are available from Help, when you want them.
+
+**0.20.0:** collision-safe autosave, recoverable missing videos, separate saved
+attempts, collapsible measuring controls, shared comparison selection, dynamic
+checkpoint/quickdraw charts, and preview queues with disk-space safeguards.
+See [release notes](docs/RELEASE_0.20.0.md).
 
 Mark climb start/end (fall or top), shared points, timestamped comments, and
 left/right rest, clip and chalk timers. Compare multiple athletes, view live

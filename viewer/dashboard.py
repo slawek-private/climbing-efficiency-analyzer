@@ -22,15 +22,17 @@ def table():
     t=QTableWidget();t.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers);t.setAlternatingRowColors(True);t.setShowGrid(False);t.verticalHeader().hide();return t
 
 def fill(t,headers,data):
-    t.setColumnCount(len(headers));t.setHorizontalHeaderLabels(headers);t.setRowCount(len(data))
+    t.setColumnCount(len(headers));t.setHorizontalHeaderLabels([h.replace('_',' ').replace('marked','recorded').capitalize() for h in headers]);t.setRowCount(len(data))
     for row,values in enumerate(data):
         for col,v in enumerate(values):t.setItem(row,col,QTableWidgetItem('—' if v is None else f'{v:.2f}' if isinstance(v,float) else str(v)))
     t.resizeColumnsToContents()
 
 class Dashboard(QWidget):
     def __init__(self):
-        super().__init__();self.documents=[];layout=QVBoxLayout(self);layout.setContentsMargins(20,16,20,16);title=QLabel('Hand patterns & efficiency');title.setObjectName('section');layout.addWidget(title)
-        line=QHBoxLayout();line.addWidget(QLabel('Compare'));self.first=QComboBox();self.second=QComboBox();line.addWidget(self.first);line.addWidget(self.second);line.addStretch();layout.addLayout(line)
+        super().__init__();self.documents=[];layout=QVBoxLayout(self);layout.setContentsMargins(20,16,20,16);title=QLabel('Hand patterns');title.setObjectName('section');layout.addWidget(title)
+        line=QHBoxLayout();line.addWidget(QLabel('Compare'));self.first=QComboBox();self.second=QComboBox();line.addWidget(self.first);line.addWidget(self.second);line.addStretch();layout.addLayout(line);self.first.hide();self.second.hide()
+        for i in range(line.count()):
+            if line.itemAt(i).widget():line.itemAt(i).widget().hide()
         note=QLabel('Observed hand choices, not a score: route geometry and stance affect clipping hand. More alternation or less rest is not automatically better. Missing chalking is unknown, not zero.');note.setWordWrap(True);note.setObjectName('muted');layout.addWidget(note)
         self.tabs=QTabWidget();layout.addWidget(self.tabs,1);self.hands=table();self.recovery=table();self.clips=table();self.point_table=table()
         self.tabs.addTab(self.hands,'Clipping hands');self.tabs.addTab(self.recovery,'Rest & chalk');self.tabs.addTab(self.clips,'Same quickdraw');self.tabs.addTab(self.point_table,'Same point');self.split_table=table();self.tabs.addTab(self.split_table,'Between clips')

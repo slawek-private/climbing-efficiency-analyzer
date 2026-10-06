@@ -18,10 +18,10 @@ def window(tmp_path,monkeypatch):
 
 def test_empty_state_then_loaded_video_and_autosave_without_dialog(tmp_path,monkeypatch):
     app,w=window(tmp_path,monkeypatch)
-    assert w.empty_hint.isVisible() and not w.image.isVisible() and not w.transport.isVisible() and w.empty_panel.isVisible() and w.save_state.text()==''
+    assert w.empty_hint.isVisible() and not w.image.isVisible() and not w.transport.isVisible() and not w.measurement_scroll.isVisible() and w.save_state.text()==''
     path=tmp_path/'anna.mkv';index=synthetic(path,40);w.video_path=path;w.index_ready(index);app.processEvents()
     assert not w.empty_hint.isVisible() and w.image.isVisible() and w.transport.isVisible() and w.boundary_box.isVisible() and not w.empty_panel.isVisible()
-    w.show_frame(5);w.set_start();assert w.start_button.text()=='Start · 0.500 s' and w.start_clear.isVisible() and '00:00.500<' in w.position.text() and 'frame 5<' in w.position.text()
+    w.show_frame(5);w.set_start();assert w.start_button.text()=='Replace start · 0.500 s' and w.start_clear.isVisible() and '00:00.500<' in w.position.text() and 'frame 5<' in w.position.text()
     assert w.save_state.text()=='Saving…'
     wait_until(app,lambda:not w.autosave_timer.isActive())
     saved=load(w.label_path);assert saved['start']['frame']==5 and w.label_path.parent==w.project.labels and w.save_state.text()=='✓ Saved' and not w.dirty()
@@ -48,15 +48,15 @@ def test_leaderboard_gaps_sorting_and_detail(tmp_path,monkeypatch):
         w.workspace.remember(path,d)
     w.refresh_collection();t=w.comparison_table
     headers=[t.horizontalHeaderItem(c).text() for c in range(t.columnCount())]
-    assert headers==['Athlete','Result','Climb','Recovery','Clips','Clip method','Roof']
+    assert headers==['Athlete','Result','Climb','Marked recovery','Clips','Clip method','Roof','Review status']
     cells={t.item(r,0).text():[t.item(r,c).text() for c in range(t.columnCount())] for r in range(t.rowCount())}
-    assert cells['Ben'][6]=='2.0 s · fastest' and cells['Anna'][6]=='3.0 s · +1.0' and cells['Cleo'][4]=='1 · 0.3 s avg' and cells['Cleo'][5]=='1 mouth' and cells['Anna'][3]=='—' and cells['Ben'][3]=='5.7 %'
+    assert cells['Ben'][6]=='2.0 s · -1.0 s vs ref' and cells['Anna'][6]=='3.0 s · +0.0 s vs ref' and cells['Cleo'][4]=='1 · 0.3 s avg' and cells['Cleo'][5]=='1 mouth' and cells['Anna'][3]=='—' and cells['Ben'][3]=='5.7 %'
     t.sortItems(6);assert [t.item(r,0).text() for r in range(3)]==['Ben','Cleo','Anna']
     assert w.comparison_summary(0)['athlete']=='Ben'
     t.selectRow(2);assert w.comparison_activity_table.rowCount()==1 and w.comparison_activity_table.item(0,3).text()=='Rope to mouth' and 'Anna' in w.comparison_detail_title.text()
     w.show_view(w.comparison_charts);app.processEvents()
     from PySide6.QtSvgWidgets import QSvgWidget
-    svgs=w.comparison_charts.scroll.widget().findChildren(QSvgWidget);assert svgs and all(s.width()<=600 for s in svgs)
+    svgs=w.comparison_charts.scroll.widget().findChildren(QSvgWidget);assert svgs and all(500<=s.width()<=1000 for s in svgs)
     w.close()
 
 def test_side_by_side_frame_step_and_library_button(tmp_path,monkeypatch):

@@ -1,0 +1,11 @@
+{
+  "format": 1,
+  "version": "0.20.0",
+  "minimum_app": "0.19.0",
+  "maximum_app": "0.20.0",
+  "migration": "additive-v1",
+  "platforms": [
+    {"os": "darwin", "arch": "arm64", "minimum_os": [14, 0]},
+    {"os": "win32", "arch": "x64", "minimum_os": [10, 0]}
+  ]
+}

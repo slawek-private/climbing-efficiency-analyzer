@@ -26,7 +26,7 @@ VALIDATOR = Draft202012Validator(SCHEMA)
 
 
 def empty_labels(source):
-    return {"schema_version": "1.2.0", "source": source,
+    return {"schema_version": "1.2.0", "attempt_id": uuid4().hex, "source": source,
             "climber": Path(source["file"]).stem.split("_final_")[0].capitalize(),
             "attempt": "1", "route": "blue", "outcome": "unknown", "start": None, "end": None,
             "checkpoints": [], "events": [], "open_events": [], "reviewed": {k: False for k in

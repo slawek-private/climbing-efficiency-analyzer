@@ -1,5 +1,5 @@
 """Private random-access JPEG previews, mapped 1:1 to original PTS frames."""
-import io,json,hashlib
+import io,json,hashlib,shutil
 from pathlib import Path
 from uuid import uuid4
 from collections import OrderedDict
@@ -51,6 +51,7 @@ def build_preview(video,index,root,progress=lambda value:None,cancelled=lambda:F
         with data_path.open('wb') as output:
             for number in range(len(index['pts'])):
                 if cancelled():raise InterruptedError('Preview preparation cancelled')
+                if number%30==0 and shutil.disk_usage(folder).free<512*2**20:raise OSError('Preview stopped: less than 512 MB free. Free storage and retry; originals and measurements are unchanged.')
                 pixels=reader.playback_frame(number)
                 Image.fromarray(pixels).save(output,format='JPEG',quality=88,subsampling=0)
                 offsets.append(output.tell())

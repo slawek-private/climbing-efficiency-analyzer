@@ -15,7 +15,7 @@ def main():
     destination=repository/'docs'/'screenshots';destination.mkdir(parents=True,exist_ok=True)
     app=QApplication.instance() or QApplication([]);app.setStyle('Fusion')
     with tempfile.TemporaryDirectory(prefix='climb-studio-demo-') as directory:
-        root=Path(directory);video=root/'synthetic-demo.mkv'
+        root=Path(directory).resolve();video=root/'synthetic-demo.mkv'
         pixels=np.full((480,320,3),[28,46,69],dtype=np.uint8)
         for x,y in [(55,425),(190,370),(95,305),(240,245),(135,180),(210,105),(70,50)]:
             pixels[y:y+16,x:x+25]=[50,132,238]
@@ -27,6 +27,8 @@ def main():
             for packet in stream.encode():output.mux(packet)
         index=index_video(video)
         simple.ROOT=root
+        import viewer.sync_view as sync
+        sync.ROOT=root
         original_settings=simple.QSettings
         simple.QSettings=lambda *args:original_settings(str(root/'settings.ini'),QSettings.Format.IniFormat)
         window=simple.Window();window.workspace=Workspace(root/'workspace.json');window.workspace.add(video);window.video_path=video;window.index_ready(index)
@@ -48,8 +50,10 @@ def main():
                 doc['events'].append(make_event({'kind':kind,'hand':hand,'target':None,'start':point(start),'confidence':1,'notes':'Synthetic demo event'},point(end)))
             doc['checkpoints']=[{'id':'rest-point','name':'REST','point':point(33+i),'comment':'Fictional demonstration'}]
             window.workspace.remember(path,doc);docs.append(doc)
-        window.history=History(docs[0]);window.saved=copy.deepcopy(docs[0]);window.draw.setValue(9);window.refresh();window.refresh_collection();window.show_frame(350);drain()
-        window.resize(1450,1000);window.show();window.precision_scrubber.set_span(15)
+        window.workspace.videos.remove(str(video));window.workspace.states.pop(str(video),None);window.video_path=root/'demo-1.mkv';window.history=History(docs[0]);window.saved=copy.deepcopy(docs[0]);window.draw.setValue(9);window.refresh();window.refresh_collection();window.show_frame(350);drain()
+        window.show();
+        from PySide6.QtTest import QTest
+        QTest.qWait(50);window.resize(1280,800);window.precision_scrubber.set_span(15)
         window.position.setText('SYNTHETIC DEMO - no people, real footage or athlete telemetry')
         def settle(predicate=lambda:True,seconds=8):
             end=time.monotonic()+seconds
@@ -66,9 +70,11 @@ def main():
         window.sync_view.seek(20);settle(lambda:all(t.shown==t.wanted for t in window.sync_view.tiles));window.grab().save(str(destination/'side-by-side.png'))
         apply_theme(window,'light')
         window.show_view(window.comparison_page);window.comparison_table.selectRow(0);settle();window.grab().save(str(destination/'athlete-comparison.png'))
-        window.show_view(window.comparison_charts);window.comparison_charts.focus.setCurrentText('Athlete A');settle();window.grab().save(str(destination/'comparison-charts.png'))
+        window.show_view(window.comparison_charts);window.compare_scope.point.setCurrentText('REST');settle();window.grab().save(str(destination/'comparison-charts.png'))
+        window.show_view(window.measure_page);window.resize(1024,768);settle();window.grab().save(str(destination/'workspace-laptop.png'))
+        window.toggle_inspector();settle();window.grab().save(str(destination/'workspace-focus.png'))
         window.saved=copy.deepcopy(window.document());window.close()
-    print('Captured six screenshots using synthetic data only:',destination)
+    print('Captured eight screenshots using synthetic data only:',destination)
     return 0
 
 if __name__=='__main__':raise SystemExit(main())

@@ -36,9 +36,15 @@ def charts(overview,points,activities,section,table,focus=None):
         cards.append('<article class="donut-card'+(' highlight' if name==focus else '')+'"><h3>'+escape(name)+'</h3><svg viewBox="0 0 210 200" role="img" aria-label="'+escape(name+' '+center+' marked recovery')+'">'+circle+'</svg><p>'+escape(caption)+'</p></article>')
     donuts=section('Recovery as a share of the climb','<p>Green/orange = combined marked recovery; grey = time outside marked recovery. Grey includes clipping and unmarked activities, so it is not measured active climbing. Dedicated rest and chalking overlap only once. Missing recovery is unknown rather than zero.</p><div class="donut-grid">'+''.join(cards)+'</div>')
     rest_chart=section('Rest percentage comparison','<p>The selected athlete is highlighted in orange. Percentages are recomputed from the source durations rather than its rounded ratio column.</p>'+bars('Combined marked recovery percentage',shares,'%',highlight=focus)+table(['Athlete','Climb s','Dedicated rest s','Dedicated rest %','Chalk s','Chalk %','Combined recovery s','Combined recovery %'],share_table)+'<p>Dedicated rest % and chalk % cannot simply be added: activities may overlap. Unmarked categories remain unknown.</p>')
-    arrivals=sorted([(p['athlete'],number(p['seconds from climb start'])) for p in points if p['point']=='REST' and number(p['seconds from climb start']) is not None],key=lambda x:x[1])
-    clipped=[(s['athlete'],number(s['clip marked seconds'])) for s in valid if number(s['clip marked count'])==8]
-    pair=section('Shared progress and clipping time','<div class="chart-grid"><article><h3>Arrival at REST</h3><p>Seconds from climb start to the same named point.</p>'+bars('REST arrival',arrivals,' s',highlight=focus)+'</article><article><h3>Total clipping · eight-clip attempts</h3><p>Attempts with other clip counts are excluded from this matched-total chart.</p>'+bars('Eight-clip total',sorted(clipped,key=lambda x:x[1]),' s',highlight=focus)+'</article></div>')
+    panels=[]
+    for name in sorted({p['point'] for p in points}):
+        arrivals=[(p['athlete']+' · '+str(p.get('attempt','')),number(p['seconds from climb start'])) for p in points if p['point']==name and number(p['seconds from climb start']) is not None]
+        panels.append('<article><h3>Arrival at '+escape(name)+'</h3><p>Seconds from climb start to this named point; repeated arrivals remain separate.</p>'+bars(name+' arrival',arrivals,' s')+'</article>')
+    for draw in sorted({a['quickdraw'] for a in activities if a['activity']=='clip' and a.get('quickdraw') is not None},key=str):
+        clips=[a for a in activities if a['activity']=='clip' and a.get('quickdraw')==draw and a.get('status')=='closed']
+        items=[(a['athlete']+' · '+str(a.get('attempt','')),number(a['duration seconds'])) for a in clips if number(a.get('duration seconds')) is not None]
+        panels.append('<article><h3>Quickdraw '+escape(str(draw))+'</h3><p>Recorded clip durations at the same draw; no required clip count.</p>'+bars('Quickdraw '+str(draw),items,' s')+'</article>')
+    pair=section('Shared checkpoints and quickdraws','<div class="chart-grid">'+''.join(panels)+'</div>')
     by_name={s['athlete']:s for s in valid};selected=by_name.get(focus)
     if selected is None or number(selected['total rest marked seconds']) is None:return donuts+rest_chart+pair
     selected_percent=100*number(selected['total rest marked seconds'])/number(selected['climb seconds'])

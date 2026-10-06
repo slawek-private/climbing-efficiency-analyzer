@@ -73,9 +73,9 @@ class StorageDialog(QDialog):
         intro = QLabel(f'Smooth previews and frame indexes speed up opening and scrubbing. They can always be rebuilt from the videos, so deleting them is safe: '
                        f'measurements, reports and video files are not stored here.\nLocation: {folders(ROOT)[0].parent}')
         intro.setWordWrap(True);intro.setObjectName('muted');layout.addWidget(intro)
-        line = QHBoxLayout();line.addWidget(QLabel('Keep smooth previews under'));self.limit = QDoubleSpinBox();self.limit.setRange(1, 2000);self.limit.setSuffix(' GB');self.limit.setDecimals(0)
+        line = QHBoxLayout();line.addWidget(QLabel('Cache budget (not reserved disk space)'));self.limit = QDoubleSpinBox();self.limit.setRange(1, 2000);self.limit.setSuffix(' GB');self.limit.setDecimals(0)
         self.limit.setValue(float(window.settings.value('cache_limit_gb', DEFAULT_LIMIT_GB)));self.limit.valueChanged.connect(self.set_limit);line.addWidget(self.limit)
-        line.addWidget(QLabel('· least recently used previews are removed first; the open video’s preview is kept'));line.addStretch();layout.addLayout(line)
+        line.addWidget(QLabel('· least recently used previews are removed first; active and queued previews are kept; protected data can exceed the budget'));line.addStretch();layout.addLayout(line)
         self.table = QTableWidget(0, 5);self.table.setHorizontalHeaderLabels(['Video', 'Used by a project', 'Smooth preview', 'Frame index', 'Last used'])
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers);self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.verticalHeader().hide();self.table.setShowGrid(False);self.table.setAlternatingRowColors(True);self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch);layout.addWidget(self.table, 1)
@@ -105,7 +105,7 @@ class StorageDialog(QDialog):
     def chosen(self):
         ordered = list(reversed(self.rows));return [ordered[i.row()]['sha256'] for i in self.table.selectionModel().selectedRows()]
     def remove(self, digests, question):
-        current = self.window.current_digest();digests = [d for d in digests if d != current]
+        protected = self.window.protected_digests();digests = [d for d in digests if d not in protected]
         if digests and QMessageBox.question(self, 'Delete cache?', question.format(n=len(digests))) == QMessageBox.StandardButton.Yes:
             for d in digests:delete(self.root, d, index=True)
             self.render()

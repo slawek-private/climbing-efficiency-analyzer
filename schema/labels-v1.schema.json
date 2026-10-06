@@ -65,7 +65,8 @@
       "minLength": 1
     },
     "route": {
-      "const": "blue"
+      "type": "string",
+      "minLength": 1
     },
     "outcome": {
       "enum": [
@@ -171,6 +172,10 @@
           }
         }
       }
+    },
+    "attempt_id": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{32}$"
     }
   },
   "$defs": {
@@ -305,6 +310,13 @@
         },
         "notes": {
           "type": "string"
+        },
+        "clip_method": {
+          "enum": [
+            "mouth",
+            "direct"
+          ],
+          "description": "Clip technique: rope pulled to the mouth before clipping, or clipped directly from a favourable position. Absent means unknown."
         }
       }
     }

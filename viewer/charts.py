@@ -1,63 +1,51 @@
-"""Live Qt charts using the same embedded SVGs as the HTML reports."""
-from html.parser import HTMLParser
+"""Responsive charts for the shared selection, with explicit eligibility per metric."""
+from html import escape
 from PySide6.QtCore import QByteArray,Qt
 from PySide6.QtSvgWidgets import QSvgWidget
-from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QLabel,QComboBox,QScrollArea
-from .comparison import rows
-from .report_visuals import charts
+from PySide6.QtWidgets import QWidget,QVBoxLayout,QLabel,QScrollArea,QSizePolicy
+from .labels import rest_breakdown
 
-class SVGs(HTMLParser):
-    def __init__(self):super().__init__(convert_charrefs=False);self.items=[];self.current=None;self.title=''
-    def handle_starttag(self,tag,attrs):
-        if tag=='svg':
-            self.title=dict(attrs).get('aria-label','Comparison chart');self.current=[self.get_starttag_text()]
-        elif self.current is not None:self.current.append(self.get_starttag_text())
-    def handle_startendtag(self,tag,attrs):
-        if self.current is not None:self.current.append(self.get_starttag_text())
-    def handle_endtag(self,tag):
-        if self.current is not None:
-            self.current.append('</'+tag+'>')
-            if tag=='svg':self.items.append((self.title,''.join(self.current)));self.current=None
-    def handle_data(self,data):
-        if self.current is not None:self.current.append(data)
-    def handle_entityref(self,name):
-        if self.current is not None:self.current.append('&'+name+';')
-    def handle_charref(self,name):
-        if self.current is not None:self.current.append('&#'+name+';')
+
+class ResponsiveChart(QSvgWidget):
+    def __init__(self,svg,height):
+        super().__init__();self.load(QByteArray(svg.encode()));self.base_height=height
+        self.setSizePolicy(QSizePolicy.Policy.Expanding,QSizePolicy.Policy.Fixed);self.setMaximumWidth(1000)
+    def resizeEvent(self,event):
+        self.setFixedHeight(max(self.base_height,int(self.width()*self.base_height/900)));super().resizeEvent(event)
+
 
 class ComparisonCharts(QWidget):
-    """Ranked bars from the report generator. Donuts are left to the HTML report; here one precise
-    encoding per metric, one decimal, neutral bars and one highlighted athlete."""
     def __init__(self):
-        super().__init__();self.documents=[];self.dark=False;layout=QVBoxLayout(self);layout.setContentsMargins(16,12,16,12)
-        header=QHBoxLayout();self.note=QLabel('Recovery combines dedicated rest and chalking, counting overlaps once. Unmarked time is unknown.');self.note.setWordWrap(True);self.note.setObjectName('muted');header.addWidget(self.note,1)
-        header.addWidget(QLabel('Highlight'));self.focus=QComboBox();header.addWidget(self.focus);layout.addLayout(header)
-        self.scroll=QScrollArea();self.scroll.setWidgetResizable(True);layout.addWidget(self.scroll,1);self.focus.currentTextChanged.connect(self.redraw)
-    def set_documents(self,documents):
-        self.documents=documents;selected=self.focus.currentText();self.focus.blockSignals(True);self.focus.clear();self.focus.addItem('All athletes')
-        self.focus.addItems(sorted({d['climber'] for d in documents if d['climber']}));i=self.focus.findText(selected);self.focus.setCurrentIndex(max(0,i));self.focus.blockSignals(False);self.redraw()
+        super().__init__();self.documents=[];self.dark=False;self.checkpoint='Climb start';layout=QVBoxLayout(self)
+        note=QLabel('Reference first, then selected attempts. Only matched, closed measurements appear. Unreviewed annotations are provisional; missing is unknown.');note.setWordWrap(True);layout.addWidget(note)
+        self.scroll=QScrollArea();self.scroll.setWidgetResizable(True);layout.addWidget(self.scroll)
+    def set_documents(self,documents):self.documents=documents;self.redraw()
     def redraw(self):
-        import re
-        overview,points,_=rows(self.documents)
-        rename=lambda data:[{k.replace('_',' '):v for k,v in row.items()} for row in data]
-        focus=self.focus.currentText();focus=None if focus=='All athletes' else focus
-        markup=charts(rename(overview),rename(points),[],lambda title,body:body,lambda headers,data:'',focus=focus)
-        parser=SVGs();parser.feed(markup);container=QWidget();column=QVBoxLayout(container);column.setSpacing(18)
-        ink,bar,highlight=('#d6e2f4','#4a5a70','#e8edf4') if self.dark else ('#25334a','#a3aec0','#141a24')
-        titles={'Combined marked recovery percentage':'Recovery · share of the climb','REST arrival':'Arrival at REST · seconds from climb start','Eight-clip total':'Total clipping time · attempts with eight clips'}
-        shown=0
-        for title,svg in parser.items:
-            if 'viewBox="0 0 210 200"' in svg:continue  # donut
-            svg=svg.replace('<svg ','<svg xmlns="http://www.w3.org/2000/svg" ',1).replace('<text ',f'<text fill="{ink}" ').replace('#4784df',bar).replace('#f0a340',highlight)
-            svg=re.sub(r'>(\d+\.\d+)(%| s)<',lambda m:f'>{float(m.group(1)):.1f}'+(' %' if m.group(2)=='%' else ' s')+'<',svg)  # round, as the table does
-            box=QVBoxLayout();heading=QLabel(titles.get(title,title));heading.setObjectName('section');box.addWidget(heading)
-            height=int(re.search(r'viewBox="0 0 700 (\d+)"',svg).group(1)) if 'viewBox="0 0 700' in svg else 120
-            widget=QSvgWidget();widget.load(QByteArray(svg.encode('utf-8')));widget.setFixedSize(int(700*.82),int(height*.82))
-            if '<rect' not in svg:
-                empty=QLabel('No matched measurements yet.');empty.setObjectName('muted');box.addWidget(empty)
-            else:box.addWidget(widget,0,Qt.AlignmentFlag.AlignLeft)
-            column.addLayout(box);shown+=1
-        if not shown:
-            empty=QLabel('Mark climb start and end for at least one athlete to show charts.');empty.setObjectName('muted');column.addWidget(empty)
+        container=QWidget();column=QVBoxLayout(container);column.setSpacing(14)
+        docs=self.documents;names=[f"{d['climber']} · {d['attempt']}" for d in docs]
+        def closed(d,kinds):return not any(e['kind'] in kinds for e in d['open_events'])
+        def plot(title,values,unit,review):
+            heading=QLabel(title);heading.setObjectName('section');column.addWidget(heading)
+            items=[(i,v) for i,v in enumerate(values) if v is not None]
+            excluded=len(values)-len(items);note=QLabel(f'{len(items)} eligible · {excluded} missing or unfinished. '+review);note.setWordWrap(True);note.setObjectName('muted');column.addWidget(note)
+            if not items:return
+            ink='#d6e2f4' if self.dark else '#25334a';height=20+len(items)*44;maximum=max([v for _,v in items]+[1])
+            svg=f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 {height}">'
+            for row,(i,value) in enumerate(items):
+                y=12+row*44;bar=510*value/maximum;color='#92c5ff' if self.dark and i==0 else '#245fc4' if i==0 else '#8293a8'
+                svg+=f'<text x="0" y="{y+19}" fill="{ink}" font-size="14">{escape(names[i][:26])}</text><rect x="235" y="{y}" width="{bar}" height="26" rx="4" fill="{color}"/><text x="{245+bar}" y="{y+19}" fill="{ink}" font-size="14">{value:.1f}{unit}</text>'
+            column.addWidget(ResponsiveChart(svg+'</svg>',height))
+        plot('Marked recovery · share of marked climb',[(rest_breakdown(d)['total_marked_rest_share']*100 if rest_breakdown(d)['total_marked_rest_share'] is not None else None) if closed(d,{'rest','chalk'}) else None for d in docs],' %','Rest and chalking overlap once. This is not an efficiency score.')
+        if self.checkpoint!='Climb start':
+            values=[min([p['point']['seconds']-d['start']['seconds'] for p in d.get('checkpoints',[]) if p['name']==self.checkpoint and d['start'] and p['point']['seconds']>=d['start']['seconds'] and (not d['end'] or p['point']['seconds']<=d['end']['seconds'])],default=None) for d in docs]
+            plot('Arrival at '+self.checkpoint,values,' s','Seconds from each marked climb start.')
+        draws=sorted({e['target'] for d in docs for e in d['events'] if e['kind']=='clip' and e['target'] is not None})
+        for draw in draws:
+            values=[]
+            for d in docs:
+                clips=[e for e in d['events'] if e['kind']=='clip' and e['target']==draw and d['start'] and d['end'] and e['start']['seconds']>=d['start']['seconds'] and e['end']['seconds']<=d['end']['seconds']]
+                values.append(clips[0]['end']['seconds']-clips[0]['start']['seconds'] if len(clips)==1 and closed(d,{'clip'}) else None)
+            plot(f'Quickdraw {draw} · clip duration',values,' s','One complete clip at this draw within climb boundaries; repeated clips excluded.')
+        if not docs:column.addWidget(QLabel('Select attempts on the same route to compare.'))
         column.addStretch();old=self.scroll.takeWidget();self.scroll.setWidget(container)
         if old:old.deleteLater()

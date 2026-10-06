@@ -34,6 +34,7 @@ def test_live_charts_svg_valid_and_updates():
     from PySide6.QtSvgWidgets import QSvgWidget
     widgets=w.findChildren(QSvgWidget)
     assert widgets and all(svg.renderer().isValid() for svg in widgets)
-    w.focus.setCurrentText('Athlete A');app.processEvents()
-    assert w.focus.currentText()=='Athlete A'
+    w.checkpoint='REST';w.redraw();app.processEvents()
+    from PySide6.QtWidgets import QLabel
+    assert any(label.text()=='Arrival at REST' for label in w.findChildren(QLabel))
     w.close()

@@ -171,3 +171,7 @@ The window follows the job: measure one climb, compare climbs, manage videos.
 - **Charts.** Ranked bars only, one decimal, neutral bars with one highlighted athlete; recovery donuts remain in the HTML report.
 - **Guided tour.** Five steps on a loaded video, offered once after the first video opens; Help › Show tour replays it.
 - **Colour.** Colour belongs to the data (clip blue, rest green, chalk purple, points amber, end red); buttons are monochrome, with one primary action per screen.
+
+## 0.20.0 · recoverable measurements and contextual comparison
+
+The current behavior supersedes earlier version entries above. See [0.20.0 release notes](RELEASE_0.20.0.md) for saved attempts, missing-video recovery, shared comparison selection, the collapsed inspector, preview queues and compatibility-gated updates. Clip method is captured when starting each timer, not when stopping it. Exports use the selected comparison. Choose Help → Show tour when ready; it does not open automatically.
