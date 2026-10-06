@@ -8,7 +8,7 @@ from .footwork import enable,metrics,KINDS,INTENTS
 HELP=('Both feet off means neither foot visibly contacting a hold, wall, volume or rock. Smears and hooks count as contact. '
       'It does not measure force or prove arms-only loading. Intentional cuts are separate from unplanned releases. '
       'Mark reviewed coverage only where both feet are visible and all slips / feet-off intervals have been reviewed and annotated. Occluded/unreviewed footage stays unknown. '
-      'For a fall, mark its onset to exclude flight. All boundaries use original frame timestamps.')
+      'For a fall, mark when the fall starts so time in the air after falling is excluded. All boundaries use original frame timestamps.')
 
 class ObservationDialog(QDialog):
     def __init__(self,w,event,coverage=False):
@@ -53,7 +53,7 @@ class FootworkPanel(QWidget):
         self.both=QPushButton('Start both-feet-off interval');self.both.setToolTip(HELP);self.both.clicked.connect(self.toggle_both);body.addWidget(self.both)
         line=QHBoxLayout();self.coverage=QPushButton('Review coverage…');self.coverage.clicked.connect(self.add_coverage);line.addWidget(self.coverage)
         more=QPushButton('More ▾');menu=QMenu(more)
-        for title,callback in [('Mark simultaneous slip',lambda:self.mark_slip('both')),('Mark uncertain slip',lambda:self.mark_slip('uncertain')),('Mark fall onset here',self.fall_onset),('Clear fall onset',self.clear_fall),('Cancel feet-off timer',self.cancel_timer)]:menu.addAction(title,callback)
+        for title,callback in [('Mark simultaneous slip',lambda:self.mark_slip('both')),('Mark uncertain slip',lambda:self.mark_slip('uncertain')),('Mark where the fall starts',self.fall_onset),('Remove fall-start mark',self.clear_fall),('Cancel feet-off timer',self.cancel_timer)]:menu.addAction(title,callback)
         more.setMenu(menu);line.addWidget(more);body.addLayout(line)
         self.summary=QLabel();self.summary.setWordWrap(True);self.summary.setObjectName('muted');self.summary.setToolTip(HELP);body.addWidget(self.summary)
         self.table=QTableWidget(0,4);self.table.setHorizontalHeaderLabels(['Event','Intent','Review','Time']);self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers);self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows);self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection);self.table.verticalHeader().hide();self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch);self.table.setMaximumHeight(155);self.table.cellDoubleClicked.connect(lambda *_:self.edit());body.addWidget(self.table)
@@ -111,7 +111,7 @@ class FootworkPanel(QWidget):
         role='primary' if pending else 'idle'
         if self.both.property('role')!=role:self.both.setProperty('role',role);self.both.style().unpolish(self.both);self.both.style().polish(self.both)
         text='Coverage not reviewed' if not m['reviewed_seconds'] else f"Reviewed {m['reviewed_seconds']:.1f} s · {m['coverage_share']:.0%} coverage"
-        if m['fall_review_needed']:text+=' · mark fall onset to exclude flight'
+        if m['fall_review_needed']:text+=' · mark where the fall starts'
         elif m['confirmed_slips'] is not None:text+=f"\nConfirmed slips: {m['confirmed_slips']} · {m['candidate_slips']} candidates · both feet off {str(round(m['both_off_seconds'],1))+' s' if m['both_off_seconds'] is not None else 'not finalized'}"
         self.summary.setText(text)
         if getattr(self,'displayed',None) is d:return

@@ -161,11 +161,11 @@ Hardware decoding: the decoder menu offers **Apple GPU · VideoToolbox** on macO
 
 The window follows the job: measure one climb, compare climbs, manage videos.
 
-- **Three tabs.** *Measure*, *Compare* (Table · Charts · Patterns & efficiency · Side by side) and *Library*.
+- **Three tabs.** *Video analysis*, *Compare* (Table · Charts · Patterns & efficiency · Side by side) and *Library*.
 - **Header.** Project, video (with “3 of 12”), *+ Add videos*, a save indicator and *Export ▾*. Ctrl+[ / Ctrl+] switch videos. The version is in Help › About; CPU and memory figures are in Help › Diagnostics.
 - **Autosave.** Every change is written to the project's labels folder about half a second later; “✓ Saved”, “Saving…” or “⚠ Not saved” (with the reason in its tooltip) shows the state. Switching video or project and quitting save first. Ctrl+S saves immediately. There is no separate save button any more.
 - **Empty state.** With no video open the video area is a drop zone with a one-line recording checklist and a link to the full recording tips. Drop videos, or a `.climbproject` file to import it, anywhere in the window. The tips no longer open by themselves.
-- **Measure panel.** Three cards in the order of a climb: *Athlete · start · end* (the start and end buttons show their values; × removes, ✎ changes the result), *During the climb* (clip method, quickdraw, a 2 × 3 grid of hand timers, named points) and a collapsible *Events* list. A running timer fills its tile, shows its time and offers × to discard it. Keyboard keys are shown as keycaps.
+- **Video analysis panel.** Three cards in the order of a climb: *Athlete · start · end* (the start and end buttons show their values; × removes, ✎ changes the result), *During the climb* (clip method, quickdraw, a 2 × 3 grid of hand timers, named points) and a collapsible *Events* list. A running timer fills its tile, shows its time and offers × to discard it. Keyboard keys are shown as keycaps.
 - **Transport.** Play, step back and forward, speed, one large timecode with the frame number, timeline zoom, the smooth-preview chip and Fit. The decoder and step size moved to Settings (Ctrl+,). The separate recorded-events timeline was removed; events show as lanes in the timeline under the video.
 - **Compare · Table.** One row per attempt: result, climb time, recovery share with a bar, clips with average clip time, clip method, and the arrival at each named point with the gap to the fastest athlete there. Climb times of falls and tops are not ranked against each other. Click a header to sort; select a row to list every rest, clip and chalk; double-click to open the video. Exports keep every column.
 - **Charts.** Ranked bars only, one decimal, neutral bars with one highlighted athlete; recovery donuts remain in the HTML report.
@@ -179,7 +179,7 @@ The current behavior supersedes earlier version entries above. See [0.20.0 relea
 ## Footwork and coaching review (0.21.0)
 
 Expand **Footwork** in the inspector to mark slips, intentional releases and
-both-feet-off intervals, review visible/obscured coverage and mark fall onset.
+both-feet-off intervals, review visible/obscured coverage and mark where the fall starts.
 **Coaching goal and context** stores the session goal and agreed next action.
 Use **Export → Coaching review** for local interactive HTML, CSV/JSON and PDF,
 with footage excluded by default. [The coaching guide](COACHING_REVIEW.md)
@@ -189,7 +189,46 @@ increased contrast.
 
 Opening a project takes you to **Library**, with its video count and the currently
 open video marked. Choose **Open** to measure a video; **Prepare selected** is a
-separate optional background task. In Measure, numbered video buttons show the
+separate optional background task. In Video analysis, numbered video buttons show the
 project's videos and highlight the current one. **Videos · N** returns to the
 Library; the header shows **Open now** and **Viewing X/N**. Arrow through a long
 video strip with its horizontal scrollbar. Ctrl+[ / Ctrl+] still switch videos.
+
+## 0.22: clearer events and comparisons
+
+**Video analysis** replaces the tab name Measure. The gold current-frame line
+has a contrasting outline, pointer and **NOW** time label. Hover it for exact
+video time; comparison rulers display seconds relative to the alignment point.
+
+Open **Events** to filter by activity and left/right hand, or search quickdraw,
+hold, clipping method or note. The count shows visible/total events. Filters
+only change the list: reports include the saved measurements. Editing/deleting
+a filtered row acts on that event; editing a timer hidden by filters reveals it.
+
+**Check completeness…** is available in Events and the Measurements menu. These
+checks mean the whole climb was inspected and every event of that type was
+marked; they are not counts or automatically inferred completeness. Start/end
+and the result must be set before confirming them, and running hand timers must
+be stopped. Footwork has a separate visible/hidden coverage review.
+
+In Compare or Side by side, **Choose athletes** opens a checklist of attempts.
+Only checked attempts are included, including the reference; deselecting the
+reference chooses another checked attempt. Clear selection shows no videos.
+The shared selection applies to charts, tables, patterns and side by side.
+
+Side by side has one **Shared timeline** slider. Each video has a read-only
+annotation timeline beneath it, aligned to the same clock; hover its labels
+for hand/foot, activity, source time and duration. These strips cannot seek,
+zoom or edit labels. Their NOW markers follow the displayed frames while video
+decoding finishes. Up to 16 selected attempts are displayed.
+
+Charts have visible names and numeric values, and native hover descriptions
+with full names and exact values. Reference bars say **Ref**. Time allocation
+bands use distinct patterns, a matching legend, labels where space allows and
+a numeric table. Foot markers use circles for intentional actions and triangles
+for unplanned/uncertain actions, with outlined candidates and filled confirmed
+markers. Colour reinforces these text and shape cues.
+
+The Footwork menu now says **Mark where the fall starts**. This keeps video time
+after falling out of foot-contact measurements; it does not identify why a fall
+happened. Source frames, presentation timestamps and metric definitions are unchanged.

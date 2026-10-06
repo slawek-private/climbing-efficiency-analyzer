@@ -121,7 +121,7 @@ class LibraryTab(QWidget):
         for column in (1,2,3,4,5,6,9):self.table.setColumnHidden(column,not show)
     def update_heading(self):
         current=self.window.video_path;self.heading.setText(f'{self.window.project.name} · {len(self.paths())} videos')
-        self.open_now.setText('Open now: '+current.name+' · choose another video below' if current else 'Choose a video below to open it in Measure.')
+        self.open_now.setText('Open now: '+current.name+' · choose another video below' if current else 'Choose a video below to open it in Video analysis.')
     def paths(self):return list(self.window.workspace.videos)
     def activate(self):
         self.render()
@@ -179,7 +179,7 @@ class LibraryTab(QWidget):
         else:self.table.clearSelection();self.table.selectRow(row);self.prepare(False)
     def prepare(self, recommended):
         if self.bulk and self.bulk.isRunning():return
-        if self.window.preview_worker and self.window.preview_worker.isRunning():return QMessageBox.information(self,'Preparation running','Wait for the current preview to finish, or cancel it in Measure, before starting a queue.')
+        if self.window.preview_worker and self.window.preview_worker.isRunning():return QMessageBox.information(self,'Preparation running','Wait for the current preview to finish, or cancel it in Video analysis, before starting a queue.')
         paths = self.paths()
         rows = range(len(paths)) if recommended else sorted({i.row() for i in self.table.selectedItems()})
         queue = [paths[r] for r in rows if Path(paths[r]).is_file() and 'error' not in self.meta.get(paths[r], {}) and not self.preview_ready(self.meta.get(paths[r], {}))

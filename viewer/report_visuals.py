@@ -12,6 +12,7 @@ def bars(title,items,unit='',maximum=None,highlight=None):
     out=f'<svg viewBox="0 0 700 {height}" role="img" aria-label="{escape(title)}">'
     for i,(name,v) in enumerate(items):
         y=25+i*45;w=max(0,v/maximum*460);color='#f0a340' if name==highlight else '#4784df'
+        if name==highlight:out+=f'<text x="0" y="{y+33}" font-size="10">Focus athlete</text>'
         out+=f'<text x="0" y="{y+19}">{escape(name)}</text><rect x="105" y="{y}" width="{w:.2f}" height="27" rx="5" fill="{color}"><title>{escape(name)}: {v:.2f}{unit}</title></rect><text x="{115+w:.2f}" y="{y+19}">{v:.2f}{unit}</text>'
     return out+'</svg>'
 
@@ -33,9 +34,9 @@ def charts(overview,points,activities,section,table,focus=None):
         center=f'{pct:.2f}%' if pct is not None else 'Unknown'
         circle+=f'<text x="105" y="98" text-anchor="middle" class="donut-value">{center}</text><text x="105" y="122" text-anchor="middle" class="donut-caption">marked recovery</text>'
         caption=f'{rest:.2f} s recovery / {duration:.2f} s climb' if rest is not None else 'Rest and chalking not marked'
-        cards.append('<article class="donut-card'+(' highlight' if name==focus else '')+'"><h3>'+escape(name)+'</h3><svg viewBox="0 0 210 200" role="img" aria-label="'+escape(name+' '+center+' marked recovery')+'">'+circle+'</svg><p>'+escape(caption)+'</p></article>')
+        cards.append('<article class="donut-card'+(' highlight' if name==focus else '')+'"><h3>'+escape(name)+(' · Focus' if name==focus else '')+'</h3><svg viewBox="0 0 210 200" role="img" aria-label="'+escape(name+' '+center+' marked recovery')+'">'+circle+'</svg><p>'+escape(caption)+'</p></article>')
     donuts=section('Recovery as a share of the climb','<p>Green/orange = combined marked recovery; grey = time outside marked recovery. Grey includes clipping and unmarked activities, so it is not measured active climbing. Dedicated rest and chalking overlap only once. Missing recovery is unknown rather than zero.</p><div class="donut-grid">'+''.join(cards)+'</div>')
-    rest_chart=section('Rest percentage comparison','<p>The selected athlete is highlighted in orange. Percentages are recomputed from the source durations rather than its rounded ratio column.</p>'+bars('Combined marked recovery percentage',shares,'%',highlight=focus)+table(['Athlete','Climb s','Dedicated rest s','Dedicated rest %','Chalk s','Chalk %','Combined recovery s','Combined recovery %'],share_table)+'<p>Dedicated rest % and chalk % cannot simply be added: activities may overlap. Unmarked categories remain unknown.</p>')
+    rest_chart=section('Rest percentage comparison','<p>The selected athlete is labelled Focus. Percentages are recomputed from the source durations rather than its rounded ratio column.</p>'+bars('Combined marked recovery percentage',shares,'%',highlight=focus)+table(['Athlete','Climb s','Dedicated rest s','Dedicated rest %','Chalk s','Chalk %','Combined recovery s','Combined recovery %'],share_table)+'<p>Dedicated rest % and chalk % cannot simply be added: activities may overlap. Unmarked categories remain unknown.</p>')
     panels=[]
     for name in sorted({p['point'] for p in points}):
         arrivals=[(p['athlete']+' · '+str(p.get('attempt','')),number(p['seconds from climb start'])) for p in points if p['point']==name and number(p['seconds from climb start']) is not None]

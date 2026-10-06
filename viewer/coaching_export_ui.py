@@ -18,7 +18,7 @@ def export_dialog(w):
     if w.coaching_export_worker and w.coaching_export_worker.isRunning():return w.statusBar().showMessage('A coaching report is already being prepared.',5000)
     if not w.flush_autosave():return
     w.remember_current();w.refresh_collection();current=w.document();selected=w.comparison_documents
-    if not current and not selected:return w.error('Measure or select an attempt first.')
+    if not current and not selected:return w.error('Open a video in Video analysis or select an attempt first.')
     dialog=QDialog(w);dialog.setWindowTitle('Export coaching review');form=QFormLayout(dialog)
     scope=QComboBox();scope.addItem('Current attempt','current');scope.addItem('Selected comparison attempts','selected');scope.setCurrentIndex(0 if current else 1);form.addRow('Attempts',scope)
     media=QComboBox()

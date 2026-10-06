@@ -1,13 +1,13 @@
 """Portable Qt presentation for the manual climbing workspace.
 
 Layout rules: show the current step and hide the rest; one primary action per screen, drawn
-monochrome so colour stays reserved for the data (clip blue, rest green, chalk purple, points
+with activity colour reinforcing text labels (clip blue, rest green, chalk purple, points
 amber, climb end red); every fact drawn once.
 """
 from PySide6.QtCore import Qt,QRect
 from PySide6.QtGui import QColor,QPainter,QAction,QKeySequence
 from PySide6.QtWidgets import (QApplication,QWidget,QVBoxLayout,QHBoxLayout,QGridLayout,QLabel,QPushButton,QFrame,QTabWidget,QSplitter,QScrollArea,QHeaderView,
-    QAbstractItemView,QComboBox,QTableWidget,QSpinBox,QMessageBox,QMenu,QDialog,QFormLayout,QCheckBox,QDialogButtonBox,QStyledItemDelegate,QStyle,QSizePolicy)
+    QAbstractItemView,QLineEdit,QComboBox,QTableWidget,QSpinBox,QMessageBox,QMenu,QDialog,QFormLayout,QCheckBox,QDialogButtonBox,QStyledItemDelegate,QStyle,QSizePolicy)
 from .version import APP_NAME,__version__
 from .platform_runtime import GPU_LABEL,timecode_font
 
@@ -49,6 +49,7 @@ QScrollArea { border: none; background: transparent; }
 QScrollBar:vertical { background: $background; width: 10px; margin: 0; }
 QScrollBar::handle:vertical { background: $line; border-radius: 4px; min-height: 30px; }
 QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical { height: 0; }
+QLineEdit#eventSearch { min-width: 0; }
 QTableWidget { background: $panel; alternate-background-color: $background; border: none; gridline-color: $soft; selection-background-color: $selected; selection-color: $ink; }
 QHeaderView { background: $background; }
 QHeaderView::section { background: $background; border: none; padding: 6px 8px; color: $muted; font-size: 12px; font-weight: 500; }
@@ -85,10 +86,12 @@ PREVIEW_HELP=('Prepare smooth preview decodes the whole video once and stores ev
     'Disk space is shown in Library and can be limited or freed in File › Storage.')
 CHECKLIST='Best results: tripod, wall straight on · 1080p or 4K at 60 fps · the original file, not a copy from WhatsApp, YouTube or Google Photos.'
 
-# Colour owned by the data; actions are monochrome.
+# Match each activity to its timeline colour; solid fills mean a running timer.
 ACCENTS={'clip':'#245fc4','rest':'#117451','chalk':'#7844b5'}
 def extra_style(dark):
-    return '\n'.join(f'QPushButton[role="stop"][kind="{kind}"] {{ background: {color}; color: white; border-color: {color}; font-weight: 600; }}' for kind,color in ACCENTS.items())
+    backgrounds={'clip':'#203451','rest':'#183b30','chalk':'#342342'} if dark else {'clip':'#eaf1ff','rest':'#e7f5ed','chalk':'#f3eafa'}
+    inks={'clip':'#93bcff','rest':'#8cd9b8','chalk':'#d8b4f8'} if dark else ACCENTS
+    return '\n'.join(f'QPushButton[role="start"][kind="{kind}"] {{ background: {backgrounds[kind]}; color: {inks[kind]}; border: 2px solid {inks[kind]}; font-weight: 600; }}\nQPushButton[role="stop"][kind="{kind}"] {{ background: {color}; color: white; border: 2px solid {color}; font-weight: 700; }}' for kind,color in ACCENTS.items())
 
 def label(text,name=None,wrap=True):
     w=QLabel(text)
@@ -172,7 +175,7 @@ def build(w):
     for text,cb in export_items:
         if text:menu.addAction(text,cb)
         else:menu.addSeparator()
-    menu=bar.addMenu('Measurements');menu.addAction('Clear this athlete…',w.clear_athlete);menu.addAction('Clear measurements…',w.clear_measurements)
+    menu=bar.addMenu('Measurements');menu.addAction('Check completeness…',w.check_completeness);menu.addAction('Clear this athlete…',w.clear_athlete);menu.addAction('Clear measurements…',w.clear_measurements)
     menu=bar.addMenu('View');w.theme_button=menu.addAction('Dark mode',w.toggle_theme)
     from PySide6.QtGui import QActionGroup
     appearance=menu.addMenu('Appearance');w.appearance_actions={};group=QActionGroup(w);group.setExclusive(True)
@@ -214,7 +217,7 @@ def build(w):
     w.progress.setFormat('Opening video · reading every frame timestamp · %p%');w.progress.setTextVisible(True);w.progress.setToolTip(LOADING_HELP);outer.addWidget(w.progress)
     # Three places: measure one climb, compare climbs, manage the videos.
     w.main_tabs=QTabWidget();w.main_tabs.setDocumentMode(True);outer.addWidget(w.main_tabs,1)
-    split=QSplitter(Qt.Orientation.Horizontal);w.main_tabs.addTab(split,'Measure');w.measure_page=split
+    split=QSplitter(Qt.Orientation.Horizontal);w.main_tabs.addTab(split,'Video analysis');w.measure_page=split
     video=QFrame();video.setObjectName('card');v=QVBoxLayout(video);v.setContentsMargins(10,10,10,8);v.setSpacing(6)
     from .video_navigation import VideoNavigation
     w.video_navigation=VideoNavigation(w);v.addWidget(w.video_navigation)
@@ -297,15 +300,19 @@ def build(w):
     w.events_card,box=step_card('')
     w.events_toggle=button('Events',w.toggle_events,'quiet');w.events_toggle.setStyleSheet('text-align: left; font-weight: 600;');box.addWidget(w.events_toggle)
     w.events_body=QWidget();body=QVBoxLayout(w.events_body);body.setContentsMargins(0,0,0,0);body.setSpacing(6)
+    filters=QHBoxLayout();w.event_kind=QComboBox();w.event_hand=QComboBox()
+    for title,value in [('All activities',None),('Clips','clip'),('Rest','rest'),('Chalk','chalk'),('Hold contacts','contact'),('Hand away','offwall')]:w.event_kind.addItem(title,value)
+    for title,value in [('Both hands',None),('Left hand','left'),('Right hand','right'),('Unassigned','none')]:w.event_hand.addItem(title,value)
+    for field,title in [(w.event_kind,'Filter events by activity'),(w.event_hand,'Filter events by hand')]:field.setAccessibleName(title);field.setToolTip(title+'; saved measurements and reports stay complete');field.currentIndexChanged.connect(w.refresh);filters.addWidget(field,1)
+    body.addLayout(filters);w.event_search=QLineEdit();w.event_search.setObjectName('eventSearch');w.event_search.setPlaceholderText('Search quickdraw, hold or note');w.event_search.setClearButtonEnabled(True);w.event_search.setAccessibleName('Search hand events');w.event_search.textChanged.connect(w.refresh);body.addWidget(w.event_search)
     w.table.setMinimumHeight(140);body.addWidget(w.table,1)
     line=QHBoxLayout()
     for text,cb in [('Edit',w.edit_event),('Delete',w.delete_event)]:line.addWidget(button(text,cb))
     line.addStretch()
     for text,cb in [('Undo',w.undo),('Redo',w.redo)]:line.addWidget(button(text,cb,'quiet'))
-    body.addLayout(line);review=QGridLayout()
-    for i,(key,checkbox) in enumerate(w.review.items()):
-        checkbox.setText(key.replace('_',' ').capitalize()+' reviewed');review.addWidget(checkbox,i//2,i%2)
-    body.addLayout(review);box.addWidget(w.events_body,1);measure.addWidget(w.events_card,1)
+    body.addLayout(line)
+    for checkbox in w.review.values():checkbox.hide()
+    body.addWidget(button('Check completeness…',w.check_completeness,'quiet'));box.addWidget(w.events_body,1);measure.addWidget(w.events_card,1)
     w.events_body.setVisible(w.settings.value('events_open',False,type=bool))
     for table in (w.table,w.points_table):
         table.setAlternatingRowColors(True);table.setShowGrid(False);table.verticalHeader().hide();table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows);table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection);table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
@@ -314,7 +321,7 @@ def build(w):
     from .compare_scope import CompareScope
     w.compare_scope=CompareScope();w.compare_scope.changed.connect(w.refresh_comparison);cp.addWidget(w.compare_scope);cp.addWidget(w.compare_tabs)
     comparison=QWidget();comparison.setObjectName('page');c=QVBoxLayout(comparison);c.setContentsMargins(16,14,16,14);c.setSpacing(8);w.comparison_page=comparison
-    w.collection_summary=label('Measure at least one climb to compare.','muted');c.addWidget(w.collection_summary)
+    w.collection_summary=label('Mark a climb start and end in Video analysis to compare.','muted');c.addWidget(w.collection_summary)
     w.comparison_table=QTableWidget();w.comparison_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers);w.comparison_table.setAlternatingRowColors(True);w.comparison_table.setShowGrid(False);w.comparison_table.verticalHeader().hide()
     w.comparison_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows);w.comparison_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection);w.comparison_table.setSortingEnabled(True)
     w.comparison_table.cellDoubleClicked.connect(w.comparison_open);w.comparison_table.itemSelectionChanged.connect(w.comparison_selected);w.comparison_table.setToolTip('Click a column to sort. Select an athlete for details; double-click to open their video.')
@@ -358,4 +365,5 @@ def apply_theme(w,theme):
     for role,color in [(QPalette.ColorRole.Window,tokens['background']),(QPalette.ColorRole.Base,tokens['panel']),(QPalette.ColorRole.AlternateBase,tokens['background']),(QPalette.ColorRole.Button,tokens['panel']),(QPalette.ColorRole.WindowText,tokens['ink']),(QPalette.ColorRole.Text,tokens['ink']),(QPalette.ColorRole.ButtonText,tokens['ink']),(QPalette.ColorRole.Highlight,tokens['accent']),(QPalette.ColorRole.HighlightedText,'white')]:palette.setColor(role,QColor(color))
     app.setPalette(palette);w.setStyleSheet(style+'\n'+extra_style(dark));w.theme='dark' if dark else 'light';w.appearance=theme;w.theme_button.setText('Light mode' if dark else 'Dark mode')
     for value,action in w.appearance_actions.items():action.setChecked(value==theme)
+    for tile in w.sync_view.tiles:tile.timeline.dark=dark;tile.timeline.update()
     w.precision_scrubber.dark=dark;w.precision_scrubber.update();w.comparison_charts.dark=dark;w.comparison_charts.redraw();w.settings.setValue('theme',theme)

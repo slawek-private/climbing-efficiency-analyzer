@@ -136,6 +136,6 @@ def test_comparison_selection_preserves_time_and_opens_exact_frame(tmp_path,monk
         path=tmp_path/(name+'.mkv');index=synthetic(path,40);doc=empty_labels(index['source']);doc['start']={'frame':start,'pts':index['pts'][start],'seconds':start/10};w.workspace.remember(path,doc)
     w.refresh_collection();w.show_view(w.sync_view);wait_until(app,lambda:len(w.sync_view.tiles)==2);w.sync_view.seek(.5)
     w.show_view(w.comparison_page);w.show_view(w.sync_view);assert abs(w.sync_view.t-.5)<1e-8
-    w.compare_scope.menu.actions()[1].setChecked(False);assert len(w.sync_view.tiles)==1
+    w.compare_scope.set_selection([w.compare_scope.reference.currentData()]);assert len(w.sync_view.tiles)==1
     tile=w.sync_view.tiles[0];w.open_comparison_document(tile.path,tile.document,tile.wanted);wait_until(app,lambda:w.reader is not None and w.frame_number==7)
     assert w.document()['attempt_id']==tile.document['attempt_id'];w.close()

@@ -2,22 +2,30 @@
 from html import escape
 from PySide6.QtCore import QByteArray,Qt
 from PySide6.QtSvgWidgets import QSvgWidget
-from PySide6.QtWidgets import QWidget,QVBoxLayout,QLabel,QScrollArea,QSizePolicy
+from PySide6.QtWidgets import QWidget,QVBoxLayout,QLabel,QScrollArea,QSizePolicy,QToolTip
 from .labels import rest_breakdown
 
 
 class ResponsiveChart(QSvgWidget):
-    def __init__(self,svg,height):
-        super().__init__();self.load(QByteArray(svg.encode()));self.base_height=height
+    def __init__(self,svg,height,details=None):
+        super().__init__();self.load(QByteArray(svg.encode()));self.base_height=height;self.details=details or [];self.setMouseTracking(True);self.setAccessibleDescription("\n".join(self.details))
         self.setSizePolicy(QSizePolicy.Policy.Expanding,QSizePolicy.Policy.Fixed);self.setMaximumWidth(1000)
     def resizeEvent(self,event):
         self.setFixedHeight(max(self.base_height,int(self.width()*self.base_height/900)));super().resizeEvent(event)
+    def hover_text(self,y):
+        scale=min(self.width()/900,self.height()/self.base_height);top=(self.height()-self.base_height*scale)/2
+        row=int(((y-top)/max(.001,scale)-12)//44)
+        return self.details[row] if 0<=row<len(self.details) else ''
+    def mouseMoveEvent(self,event):
+        tip=self.hover_text(event.position().y())
+        if tip:QToolTip.showText(event.globalPosition().toPoint(),tip,self)
+        else:QToolTip.hideText()
 
 
 class ComparisonCharts(QWidget):
     def __init__(self):
         super().__init__();self.documents=[];self.dark=False;self.checkpoint='Climb start';layout=QVBoxLayout(self)
-        note=QLabel('Reference first, then selected attempts. Only matched, closed measurements appear. Unreviewed annotations are provisional; missing is unknown.');note.setWordWrap(True);layout.addWidget(note)
+        note=QLabel('Reference labelled Ref, then selected attempts. Hover a row for full name and value. Only matched, closed measurements appear. Unreviewed annotations are provisional; missing is unknown.');note.setWordWrap(True);layout.addWidget(note)
         self.scroll=QScrollArea();self.scroll.setWidgetResizable(True);layout.addWidget(self.scroll)
     def set_documents(self,documents):self.documents=documents;self.redraw()
     def redraw(self):
@@ -30,11 +38,13 @@ class ComparisonCharts(QWidget):
             excluded=len(values)-len(items);note=QLabel(f'{len(items)} eligible · {excluded} missing or unfinished. '+review);note.setWordWrap(True);note.setObjectName('muted');column.addWidget(note)
             if not items:return
             ink='#d6e2f4' if self.dark else '#25334a';height=20+len(items)*44;maximum=max([v for _,v in items]+[1])
-            svg=f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 {height}">'
+            details=[];svg=f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 {height}">'
             for row,(i,value) in enumerate(items):
                 y=12+row*44;bar=510*value/maximum;color='#92c5ff' if self.dark and i==0 else '#245fc4' if i==0 else '#8293a8'
-                svg+=f'<text x="0" y="{y+19}" fill="{ink}" font-size="14">{escape(names[i][:26])}</text><rect x="235" y="{y}" width="{bar}" height="26" rx="4" fill="{color}"/><text x="{245+bar}" y="{y+19}" fill="{ink}" font-size="14">{value:.1f}{unit}</text>'
-            column.addWidget(ResponsiveChart(svg+'</svg>',height))
+                details.append(f'{names[i]} · {title}: {value:.3f}{unit}'+(' · reference attempt' if i==0 else '')+' · '+review)
+                label=('Ref · ' if i==0 else '')+names[i]
+                svg+=f'<text x="0" y="{y+19}" fill="{ink}" font-size="14">{escape(label[:30])}</text><rect x="235" y="{y}" width="{bar}" height="26" rx="4" fill="{color}"/><text x="{245+bar}" y="{y+19}" fill="{ink}" font-size="14">{value:.1f}{unit}</text>'
+            column.addWidget(ResponsiveChart(svg+'</svg>',height,details))
         plot('Marked recovery · share of marked climb',[(rest_breakdown(d)['total_marked_rest_share']*100 if rest_breakdown(d)['total_marked_rest_share'] is not None else None) if closed(d,{'rest','chalk'}) else None for d in docs],' %','Rest and chalking overlap once. This is not an efficiency score.')
         if self.checkpoint!='Climb start':
             values=[min([p['point']['seconds']-d['start']['seconds'] for p in d.get('checkpoints',[]) if p['name']==self.checkpoint and d['start'] and p['point']['seconds']>=d['start']['seconds'] and (not d['end'] or p['point']['seconds']<=d['end']['seconds'])],default=None) for d in docs]

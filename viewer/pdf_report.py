@@ -25,7 +25,8 @@ class Donuts(Flowable):
                 c.setFillColor(ORANGE if row['athlete']==self.focus else GREEN);c.wedge(x-r,y-r,x+r,y+r,90,-3.6*pct,stroke=0,fill=1)
             c.setFillColor(colors.white);c.circle(x,y,r*.73,stroke=0,fill=1)
             c.setFillColor(INK);c.setFont('Helvetica-Bold',13);c.drawCentredString(x,y-4,f'{pct:.2f}%' if pct is not None else 'Unknown')
-            c.setFont('Helvetica-Bold',10);c.drawCentredString(x,129,row['athlete'])
+            c.setFont('Helvetica-Bold',10);c.drawCentredString(x,129,row['athlete']);c.setFont('Helvetica',7)
+            if row['athlete']==self.focus:c.drawCentredString(x,117,'Focus athlete')
             c.setFont('Helvetica',8);c.drawCentredString(x,24,f'{rest:.2f}s / {duration:.2f}s' if rest is not None else 'Recovery unmarked')
 
 class Bars(Flowable):
@@ -34,6 +35,7 @@ class Bars(Flowable):
         c=self.canv;maximum=max((v for _,v in self.items),default=1) or 1
         for i,(name,value) in enumerate(self.items):
             y=self.height-26*(i+1);c.setFont('Helvetica',9);c.setFillColor(INK);c.drawString(0,y+5,name)
+            if name==self.focus:c.setFont('Helvetica',7);c.drawString(0,y-4,'Focus athlete');c.setFont('Helvetica',9)
             w=value/maximum*(self.width-180);c.setFillColor(ORANGE if name==self.focus else BLUE);c.roundRect(95,y,w,17,3,stroke=0,fill=1)
             c.setFillColor(INK);c.drawString(103+w,y+5,f'{value:.2f}{self.unit}')
 

@@ -118,7 +118,7 @@ def export_report(documents,path,*,sources=None,media='none',include_hands=False
             body='<h2>'+escape(label)+'</h2><p class="muted">'+escape(d['route']+' · '+d['outcome']+' · '+' · '.join(v for v in context.values() if v))+'</p><p class="goal">'+escape(goal)+'</p><div class="stats">'+''.join('<div><strong>'+escape(value)+'</strong><span>'+escape(title)+'</span><br><small>'+escape(note)+'</small></div>' for title,value,note in facts)+'</div>'
             if m['coverage_share'] is not None:body+=f'<div class="coverage" aria-label="{m["coverage_share"]:.0%} reviewed coverage"><span style="width:{100*m["coverage_share"]:.3f}%"></span></div>'
             if m['pending']:body+='<p><strong>Unfinished feet-off timer:</strong> totals stay unknown until it is closed and reviewed.</p>'
-            if m['fall_review_needed']:body+='<p><strong>Fall onset not reviewed:</strong> footwork totals remain unknown because fall flight cannot yet be excluded.</p>'
+            if m['fall_review_needed']:body+='<p><strong>Fall start not marked:</strong> footwork totals remain unknown because time in the air after the fall cannot yet be excluded.</p>'
             body+='<p class="muted">Both feet off: '+escape(display(m['both_off_seconds'],' s'))+' / '+escape(display(m['reviewed_seconds'],' s'))+' = '+escape(display(m['both_off_share']*100 if m['both_off_share'] is not None else None,'%'))+' of observable reviewed time. This is a description, not a quality rating. Occluded and unreviewed footage is excluded.</p>'
             cards=[];event_rows=[]
             highlighted=sorted(events,key=lambda e:(not bool(e.get('action') or e.get('interpretation')),e.get('status')!='confirmed',e['start']['seconds']))[:3]
@@ -192,7 +192,7 @@ def export_pdf(documents,path,anonymous=False,stills=None):
         name=f'Athlete {i+1}' if anonymous else d['climber'];m=metrics(d);c=d.get('coaching',{});add(name+' · attempt '+d['attempt'],'Title');add(d['route']+' · '+d['outcome']+' · '+' · '.join(v for v in d.get('context',{}).values() if v));add(c.get('goal') or 'No session goal recorded','Heading2')
         grid(['Confirmed slips','Unplanned both feet off','Footwork coverage'],[[display(m['confirmed_slips']),display(m['unplanned_seconds'],' s'),display(m['coverage_share']*100 if m['coverage_share'] is not None else None,'%')]])
         add(f"Candidates: {m['candidate_slips']}. Intentional feet off: {display(m['intentional_seconds'],' s')}. Total feet off {display(m['both_off_seconds'],' s')} / reviewed {display(m['reviewed_seconds'],' s')}. This is a description, not a quality score.")
-        if m['fall_review_needed']:add('Fall onset not reviewed: totals unknown until flight can be excluded.')
+        if m['fall_review_needed']:add('Fall start not marked: totals unknown until time after the fall can be excluded.')
         for key,title in [('reflection','Athlete reflection'),('action','Agreed next action'),('retest','Next-session check')]:
             story.extend((KeepTogether([para(title,'Heading3'),Spacer(1,6),para(c.get(key) or 'Not recorded')]),Spacer(1,12)))
         events=observations(d)

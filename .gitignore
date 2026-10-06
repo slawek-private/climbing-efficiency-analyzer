@@ -31,6 +31,8 @@ __pycache__/
 # Explicit exception: generated synthetic documentation screenshots only
 !/docs/screenshots/workspace-light.png
 !/docs/screenshots/workspace-dark.png
+!/docs/screenshots/workspace-events.png
+!/docs/screenshots/time-allocation.png
 !/docs/screenshots/workspace-laptop.png
 !/docs/screenshots/workspace-focus.png
 !/docs/screenshots/workspace-footwork.png

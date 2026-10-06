@@ -1,22 +1,35 @@
 """Live local comparison dashboards with selectable athletes."""
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QPainter,QColor
-from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QLabel,QTabWidget,QTableWidget,QTableWidgetItem,QAbstractItemView,QComboBox,QScrollArea
+from PySide6.QtCore import Qt,QRectF
+from PySide6.QtGui import QPainter,QColor,QBrush
+from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QLabel,QTabWidget,QTableWidget,QTableWidgetItem,QAbstractItemView,QComboBox,QScrollArea,QToolTip
 from .analytics import patterns,matched_clips,between_clips
 from .comparison import rows
 
 class AllocationChart(QWidget):
-    def __init__(self):super().__init__();self.data=[];self.setMinimumHeight(220)
+    def __init__(self):super().__init__();self.data=[];self.setMinimumHeight(220);self.hits=[];self.setMouseTracking(True);self.setAccessibleName('Time allocation: labelled segments and exact values in the table below')
     def paintEvent(self,event):
-        p=QPainter(self);p.setRenderHint(QPainter.RenderHint.Antialiasing);palette={'clip':'#377deb','rest':'#1d9874','chalk':'#a16cda','overlap':'#e29b3e','unclassified':'#8997ab'};maximum=max([sum(r['allocation'].values()) for r in self.data if r['allocation']]+[1]);width=max(30,self.width()-230)
+        self.hits=[];p=QPainter(self);p.setRenderHint(QPainter.RenderHint.Antialiasing);patterns={'rest':Qt.BrushStyle.BDiagPattern,'chalk':Qt.BrushStyle.FDiagPattern,'overlap':Qt.BrushStyle.CrossPattern,'unclassified':Qt.BrushStyle.Dense6Pattern};palette={'clip':'#377deb','rest':'#1d9874','chalk':'#a16cda','overlap':'#e29b3e','unclassified':'#8997ab'};maximum=max([sum(r['allocation'].values()) for r in self.data if r['allocation']]+[1]);width=max(30,self.width()-230)
         for i,r in enumerate(self.data):
             y=20+i*44;p.setPen(self.palette().windowText().color());p.drawText(5,y+18,r['athlete']+' / '+r['attempt']);x=140
             if r['allocation'] is None:p.drawText(x,y+18,'Mark climb start and end');continue
             for key,seconds in r['allocation'].items():
-                w=seconds/maximum*width;p.fillRect(int(x),y,int(w),24,QColor(palette[key]));x+=w
+                w=seconds/maximum*width;rect=QRectF(x,y,w,24);p.fillRect(rect,QColor(palette[key]));pattern=patterns.get(key,Qt.BrushStyle.NoBrush)
+                if pattern!=Qt.BrushStyle.NoBrush:p.fillRect(rect,QBrush(QColor('#151719'),pattern))
+                label=f'{key.capitalize()} {seconds:.1f}s'
+                if w>=p.fontMetrics().horizontalAdvance(label)+8:
+                    p.setPen(QColor('#ffffff'));label_width=p.fontMetrics().horizontalAdvance(label)+6;p.fillRect(QRectF(x+(w-label_width)/2,y+3,label_width,18),QColor('#20252b'));p.drawText(rect,Qt.AlignmentFlag.AlignCenter,label)
+                self.hits.append((rect,f"{r['athlete']} · attempt {r['attempt']} · {key}: {seconds:.3f} s"));x+=w
             p.setPen(self.palette().windowText().color());p.drawText(int(x)+8,y+18,f"{sum(r['allocation'].values()):.2f}s")
         x=5;y=35+len(self.data)*44
-        for key,color in palette.items():p.fillRect(x,y,10,10,QColor(color));p.setPen(self.palette().windowText().color());p.drawText(x+15,y+10,'Dedicated rest' if key=='rest' else key.capitalize());x+=max(100,int(self.width()/5))
+        for key,color in palette.items():
+            rect=QRectF(x,y,14,14);p.fillRect(rect,QColor(color))
+            if key in patterns:p.fillRect(rect,QBrush(QColor('#151719'),patterns[key]))
+            p.setPen(self.palette().windowText().color());p.drawText(x+19,y+12,'Rest' if key=='rest' else key.capitalize());x+=max(100,int(self.width()/5))
+    def hover_text(self,position):return next((text for rect,text in self.hits if rect.contains(position)),'')
+    def mouseMoveEvent(self,event):
+        tip=self.hover_text(event.position())
+        if tip:QToolTip.showText(event.globalPosition().toPoint(),tip,self)
+        else:QToolTip.hideText()
 
 def table():
     t=QTableWidget();t.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers);t.setAlternatingRowColors(True);t.setShowGrid(False);t.verticalHeader().hide();return t

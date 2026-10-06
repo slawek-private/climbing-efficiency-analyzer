@@ -7,7 +7,7 @@ from uuid import uuid4
 from pathlib import Path
 from PySide6.QtCore import QTimer,QSettings
 from PySide6.QtGui import QShortcut,QKeySequence
-from PySide6.QtWidgets import QApplication,QWidget,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,QLineEdit,QGroupBox,QTableWidget,QTableWidgetItem,QFileDialog,QMessageBox,QInputDialog,QComboBox
+from PySide6.QtWidgets import QApplication,QWidget,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,QLineEdit,QGroupBox,QTableWidget,QTableWidgetItem,QFileDialog,QMessageBox,QInputDialog,QComboBox,QDialog,QDialogButtonBox,QCheckBox
 from .app import Window as LegacyWindow
 from .labels import ROOT, make_event,History,empty_labels,load,save
 from .version import APP_NAME,__version__
@@ -151,19 +151,21 @@ class Window(LegacyWindow):
     def refresh(self):
         super().refresh()
         if not self.simple_ready or not self.history:return
-        d=self.document();self.table.blockSignals(True);self.table.setRowCount(len(self.visible_events))
-        self.table.setHorizontalHeaderLabels(['Activity','Hand','#','Start','End','Length'])
+        d=self.document();kind=self.event_kind.currentData();hand=self.event_hand.currentData();query=self.event_search.text().strip().casefold()
+        self.visible_events=[e for e in self.visible_events if (kind is None or e['kind']==kind) and (hand is None or e['hand']==hand) and (not query or query in (' '.join(str(e.get(k) or '') for k in ('target','notes','clip_method'))).casefold())]
+        self.table.blockSignals(True);self.table.setRowCount(len(self.visible_events))
+        self.table.setHorizontalHeaderLabels(['Event','Hand','#','Start','End','Time'])
         self.points_table.setHorizontalHeaderLabels(['Point','Video','Climb','Comment'])
         for col,tip in enumerate(['','Seconds in the video','Seconds from climb start','']):self.points_table.horizontalHeaderItem(col).setToolTip(tip)
         for col,tip in enumerate(['','','Hold or quickdraw number, with clip method','Seconds from climb start','Seconds from climb start','Seconds']):self.table.horizontalHeaderItem(col).setToolTip(tip)
         for row,e in enumerate(self.visible_events):
-            for col,value in enumerate(({'contact':'Hold','rest':'Rest','clip':'Clip','offwall':'Off-wall','chalk':'Chalk'}[e['kind']],{'left':'Left','right':'Right','none':'—'}[e['hand']],str(e['target'] or '—')+{'mouth':' · mouth','direct':' · direct'}.get(e.get('clip_method'),''),f"{e['start']['seconds']-d['start']['seconds']:.2f}" if d['start'] else '—',f"{e['end']['seconds']-d['start']['seconds']:.2f}" if d['start'] else '—',f"{e['end']['seconds']-e['start']['seconds']:.2f}")):
+            for col,value in enumerate(({'contact':'Hold','rest':'Rest','clip':'Clip','offwall':'Hand away','chalk':'Chalk'}[e['kind']],{'left':'Left','right':'Right','none':'—'}[e['hand']],str(e['target'] or '—')+{'mouth':' · mouth','direct':' · direct'}.get(e.get('clip_method'),''),f"{e['start']['seconds']-d['start']['seconds']:.2f}" if d['start'] else '—',f"{e['end']['seconds']-d['start']['seconds']:.2f}" if d['start'] else '—',f"{e['end']['seconds']-e['start']['seconds']:.2f}")):
                 item=QTableWidgetItem(str(value));item.setToolTip(f"Video time: {e['start']['seconds']:.3f}–{e['end']['seconds']:.3f} s"+('' if d['start'] else ' · mark the climb start for climb-relative times'));self.table.setItem(row,col,item)
         self.table.blockSignals(False)
         self.point_rows=sorted(d.get('checkpoints',[]),key=lambda p:p['point']['seconds']);self.points_table.setRowCount(len(self.point_rows))
         for row,p in enumerate(self.point_rows):
             for col,v in enumerate((p['name'],f"{p['point']['seconds']:.2f} s",f"{p['point']['seconds']-d['start']['seconds']:.2f} s" if d['start'] and p['point']['seconds']>=d['start']['seconds'] else '—',p.get('comment',''))):self.points_table.setItem(row,col,QTableWidgetItem(v))
-        self.points_table.setVisible(bool(self.point_rows));self.points_table.resizeColumnsToContents();self.events_toggle.setText(('▾' if self.events_body.isVisible() else '▸')+f'  Events · {len(self.visible_events)}');self.refresh_live();self.update_project_label()
+        self.points_table.setVisible(bool(self.point_rows));self.points_table.resizeColumnsToContents();self.events_toggle.setText(('▾' if self.events_body.isVisible() else '▸')+f'  Events · {len(self.visible_events)}/{len(d["events"])}');self.refresh_live();self.update_project_label()
     def set_frame_step(self,value):
         self.settings.setValue('frame_step',value)
         if hasattr(self,'step_back_button'):self.step_back_button.setToolTip(f'Back {value} frames (←) · Shift+← one frame');self.step_forward_button.setToolTip(f'Forward {value} frames (→) · Shift+→ one frame')
@@ -183,6 +185,9 @@ class Window(LegacyWindow):
     def select_timeline_event(self,identifier):
         if any(e["id"]==identifier for e in self.document().get("footwork",{}).get("events",[])):
             self.footwork_panel.select(identifier);return
+        if any(e['id']==identifier for e in self.document()['events']) and not any(e['id']==identifier for e in self.visible_events):
+            for field in (self.event_kind,self.event_hand):field.blockSignals(True);field.setCurrentIndex(0);field.blockSignals(False)
+            self.event_search.blockSignals(True);self.event_search.clear();self.event_search.blockSignals(False);self.refresh()
         row=next((i for i,e in enumerate(self.visible_events) if e['id']==identifier),None)
         if row is not None:self.table.selectRow(row);self.table.setFocus()
     def clear_boundary(self,key):
@@ -325,6 +330,17 @@ class Window(LegacyWindow):
             if hasattr(self,'sync_view'):self.sync_view.shutdown()
             if hasattr(self,'library'):self.library.shutdown()
             if self.pending_update:self.pending_update();self.pending_update=None
+    def check_completeness(self):
+        if not self.history:return
+        self.pause();dialog=QDialog(self);dialog.setWindowTitle('Check completeness');box=QVBoxLayout(dialog)
+        explanation=QLabel('Check a box only after checking the whole climb and marking every event of that type. Reports use this to distinguish complete review from partial markings. Missing data stays unknown. Stop all running hand timers before saving checked boxes. Editing measurements clears these checks. Footwork uses its own visible/hidden video review.');explanation.setWordWrap(True);box.addWidget(explanation);fields={}
+        titles={'boundaries':'Start and end are correct','left_contacts':'All left-hand hold contacts are marked','right_contacts':'All right-hand hold contacts are marked','rests':'All rest and chalk intervals are marked','clips':'All clips are marked','left_offwall':'All left-hand releases are marked','right_offwall':'All right-hand releases are marked'}
+        for key,title in titles.items():
+            field=QCheckBox(title);field.setChecked(self.document()['reviewed'].get(key,False));box.addWidget(field);fields[key]=field
+        buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Save|QDialogButtonBox.StandardButton.Cancel);buttons.accepted.connect(dialog.accept);buttons.rejected.connect(dialog.reject);box.addWidget(buttons)
+        if dialog.exec()==QDialog.DialogCode.Accepted:
+            d=copy.deepcopy(self.document());d['reviewed']={key:field.isChecked() for key,field in fields.items()}
+            self.commit(d)
     def edit_coaching(self):
         from .coaching_ui import edit_coaching
         edit_coaching(self)
@@ -737,7 +753,7 @@ class Window(LegacyWindow):
                 arrivals=[p['seconds_from_climb_start'] for p in points if p['point']==name and all(p[k]==o[k] for k in ('athlete','attempt','video','attempt_id')) and p['seconds_from_climb_start'] is not None]
                 first=min(arrivals,default=None);gap=first-best[name] if first is not None and best[name] is not None else None
                 cells.append((('—' if first is None else f'{first:.1f} s · '+('reference missing' if gap is None else f'{gap:+.1f} s vs ref')),first))
-            document=self.comparison_documents[row];reviewed=[name for key,name in [('boundaries','boundaries'),('rests','recovery'),('clips','clips')] if document['reviewed'].get(key)]
+            document=self.comparison_documents[row];reviewed=[name for key,name in [('boundaries','start/end'),('rests','recovery'),('clips','clips')] if document['reviewed'].get(key)]
             status=(f"{len(document['open_events'])} unfinished · " if document['open_events'] else '')+('Reviewed: '+', '.join(reviewed) if reviewed else 'Not reviewed')
             cells.append((status,status))
             for col,(text,key) in enumerate(cells):

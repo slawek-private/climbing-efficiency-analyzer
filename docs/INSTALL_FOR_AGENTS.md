@@ -84,7 +84,7 @@ uv run --no-sync python -m tools.capture_screenshots
 
 The generator creates a temporary video from coloured rectangles and fictional
 labels, using isolated workspace/settings paths. It never reads private footage
-or labels. Review the four PNGs under `docs/screenshots` before staging them.
+or labels. Review the eleven PNGs under `docs/screenshots` before staging them.
 Only those synthetic documentation PNGs are allowed through the image ignore rule.
 
 ## Completion evidence
