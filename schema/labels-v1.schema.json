@@ -23,7 +23,8 @@
       "enum": [
         "1.0.0",
         "1.1.0",
-        "1.2.0"
+        "1.2.0",
+        "1.3.0"
       ]
     },
     "source": {
@@ -176,6 +177,214 @@
     "attempt_id": {
       "type": "string",
       "pattern": "^[a-f0-9]{32}$"
+    },
+    "footwork": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "definition_version",
+        "events",
+        "coverage",
+        "pending",
+        "fall_onset"
+      ],
+      "properties": {
+        "definition_version": {
+          "const": "1.0.0"
+        },
+        "events": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "kind",
+              "limb",
+              "start",
+              "end",
+              "intent",
+              "status",
+              "observation",
+              "interpretation",
+              "action"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "kind": {
+                "enum": [
+                  "slip",
+                  "both_off",
+                  "foot_release"
+                ]
+              },
+              "limb": {
+                "enum": [
+                  "left",
+                  "right",
+                  "both",
+                  "uncertain"
+                ]
+              },
+              "start": {
+                "$ref": "#/$defs/point"
+              },
+              "end": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/point"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "intent": {
+                "enum": [
+                  "unplanned",
+                  "intentional",
+                  "uncertain"
+                ]
+              },
+              "status": {
+                "enum": [
+                  "confirmed",
+                  "uncertain",
+                  "candidate"
+                ]
+              },
+              "observation": {
+                "type": "string"
+              },
+              "interpretation": {
+                "type": "string"
+              },
+              "action": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "coverage": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "start",
+              "end",
+              "state"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "start": {
+                "$ref": "#/$defs/point"
+              },
+              "end": {
+                "$ref": "#/$defs/point"
+              },
+              "state": {
+                "enum": [
+                  "reviewed",
+                  "obscured"
+                ]
+              }
+            }
+          }
+        },
+        "pending": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "start",
+                "intent"
+              ],
+              "properties": {
+                "start": {
+                  "$ref": "#/$defs/point"
+                },
+                "intent": {
+                  "enum": [
+                    "unplanned",
+                    "intentional",
+                    "uncertain"
+                  ]
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "fall_onset": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/point"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "coaching": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "goal",
+        "reflection",
+        "action",
+        "retest"
+      ],
+      "properties": {
+        "goal": {
+          "type": "string"
+        },
+        "reflection": {
+          "type": "string"
+        },
+        "action": {
+          "type": "string"
+        },
+        "retest": {
+          "type": "string"
+        }
+      }
+    },
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "discipline",
+        "grade",
+        "wall_angle",
+        "familiarity"
+      ],
+      "properties": {
+        "discipline": {
+          "type": "string"
+        },
+        "grade": {
+          "type": "string"
+        },
+        "wall_angle": {
+          "type": "string"
+        },
+        "familiarity": {
+          "type": "string"
+        }
+      }
     }
   },
   "$defs": {

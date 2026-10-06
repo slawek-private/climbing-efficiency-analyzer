@@ -6,54 +6,68 @@ amber, climb end red); every fact drawn once.
 """
 from PySide6.QtCore import Qt,QRect
 from PySide6.QtGui import QColor,QPainter,QAction,QKeySequence
-from PySide6.QtWidgets import (QWidget,QVBoxLayout,QHBoxLayout,QGridLayout,QLabel,QPushButton,QFrame,QTabWidget,QSplitter,QScrollArea,QHeaderView,
+from PySide6.QtWidgets import (QApplication,QWidget,QVBoxLayout,QHBoxLayout,QGridLayout,QLabel,QPushButton,QFrame,QTabWidget,QSplitter,QScrollArea,QHeaderView,
     QAbstractItemView,QComboBox,QTableWidget,QSpinBox,QMessageBox,QMenu,QDialog,QFormLayout,QCheckBox,QDialogButtonBox,QStyledItemDelegate,QStyle,QSizePolicy)
 from .version import APP_NAME,__version__
 from .platform_runtime import GPU_LABEL,timecode_font
 
+TOKENS={False:dict(ink='#20252b',muted='#59616b',background='#f4f5f6',panel='#ffffff',line='#8b939d',soft='#e5e7eb',hover='#edf0f3',selected='#e8f0fe',accent='#245fc4',onaccent='#ffffff'),
+        True:dict(ink='#f3f4f5',muted='#b2b8bf',background='#151719',panel='#202326',line='#727c87',soft='#383e45',hover='#2c3137',selected='#293d58',accent='#245fc4',onaccent='#ffffff')}
 STYLE='''
-QWidget { font-size: 13px; color: #25334a; }
-QMainWindow, QWidget#workspace { background: #f2f5fa; }
-QFrame#card, QWidget#page { background: #ffffff; border-radius: 14px; }
-QFrame#step { background: #ffffff; border: 1px solid #e1e8f2; border-radius: 10px; }
+QWidget { font-size: 13px; color: $ink; }
+QMainWindow, QWidget#workspace { background: $background; }
+QFrame#card, QWidget#page { background: $panel; border-radius: 8px; }
+QFrame#step { background: transparent; border: none; border-top: 1px solid $soft; border-radius: 0; }
 QLabel { background: transparent; border: none; }
-QLabel#brand { font-size: 20px; font-weight: 700; color: #15263f; }
-QLabel#muted { color: #65748b; font-size: 12px; }
-QLabel#section { font-size: 14px; font-weight: 600; }
-QLabel#eyebrow { color: #65748b; font-size: 11px; font-weight: 600; letter-spacing: 1px; }
-QLabel#timer { font-size: 15px; font-weight: 600; color: #15263f; }
-QLabel#timecode { font-size: 19px; font-weight: 600; color: #15263f; }
-QPushButton { background: #ffffff; border: 1px solid #d8e1ed; border-radius: 8px; padding: 7px 12px; min-height: 18px; font-weight: 500; }
-QPushButton:hover { background: #eaf1fb; border-color: #8ba9d0; }
-QPushButton:focus { border: 2px solid #2265d8; }
-QPushButton:pressed { background: #dce8f7; }
-QPushButton[role="quiet"] { background: transparent; border: none; color: #6c7b91; padding: 4px 6px; }
-QPushButton[role="quiet"]:hover { color: #15263f; }
+QLabel#brand { font-size: 20px; font-weight: 600; }
+QLabel#muted,QLabel#eyebrow { color: $muted; font-size: 12px; }
+QLabel#section { font-size: 15px; font-weight: 600; }
+QLabel#timer { font-size: 15px; font-weight: 600; }
+QLabel#timecode { font-size: 19px; font-weight: 600; }
+QPushButton { background: $panel; border: 1px solid $line; border-radius: 6px; padding: 6px 10px; min-height: 20px; font-weight: 400; }
+QPushButton:checked { background: $selected; border: 2px solid $accent; font-weight: 600; }
+QPushButton:hover { background: $hover; }
+QPushButton:focus { border: 2px solid $accent; }
+QPushButton:pressed { background: $selected; }
+QPushButton[role="primary"] { background: $accent; color: $onaccent; border-color: $accent; font-weight: 600; }
+QPushButton[role="quiet"] { background: transparent; border: 1px solid transparent; color: $muted; padding: 4px 6px; min-height: 22px; }
+QPushButton[role="quiet"]:focus { border: 2px solid $accent; }
+QPushButton[role="quiet"]:hover { color: $ink; background: $hover; }
 QPushButton[kind] { min-height: 34px; }
-QPushButton[keycap="true"] { padding-right: 36px; }
-QPushButton:disabled { background: #f0f3f7; color: #a1adbd; border-color: #e5eaf0; }
+QPushButton[keycap="true"] { padding-right: 30px; }
+QPushButton:disabled { background: $background; color: $muted; border-color: $soft; }
 QPushButton::menu-indicator { width: 0; }
-QLineEdit,QSpinBox,QDoubleSpinBox,QComboBox { background: white; border: 1px solid #d7e0ec; border-radius: 7px; padding: 6px 7px; selection-background-color: #2265d8; }
-QLineEdit:focus,QSpinBox:focus,QComboBox:focus { border: 1px solid #2265d8; }
-QComboBox QAbstractItemView { background: white; selection-background-color: #e4edfd; selection-color: #25334a; }
-QTabWidget::pane { border: none; background: white; border-radius: 12px; }
-QTabBar::tab { background: transparent; color: #68778e; padding: 10px 18px; border-bottom: 2px solid transparent; font-weight: 600; }
-QTabBar::tab:selected { color: #15263f; border-bottom: 2px solid #15263f; }
-QTabBar::tab:hover { color: #15263f; }
+QLineEdit,QSpinBox,QDoubleSpinBox,QComboBox,QPlainTextEdit { background: $panel; border: 1px solid $line; border-radius: 5px; padding: 6px; selection-background-color: $accent; selection-color: white; }
+QLineEdit:focus,QSpinBox:focus,QComboBox:focus,QPlainTextEdit:focus { border: 2px solid $accent; }
+QComboBox QAbstractItemView { background: $panel; selection-background-color: $selected; selection-color: $ink; }
+QTabWidget::pane { border: none; background: $panel; border-radius: 8px; }
+QTabBar::tab { background: transparent; color: $muted; padding: 10px 16px; border-bottom: 2px solid transparent; font-weight: 500; }
+QTabBar::tab:selected { color: $ink; border-bottom: 2px solid $accent; }
+QTabBar::tab:hover { background: $hover; }
+QTabBar::tab:focus { border: 2px solid $accent; }
 QScrollArea { border: none; background: transparent; }
-QScrollBar:vertical { background: #f3f6fa; width: 8px; margin: 0; }
-QScrollBar::handle:vertical { background: #c6d2e3; border-radius: 4px; min-height: 30px; }
+QScrollBar:vertical { background: $background; width: 10px; margin: 0; }
+QScrollBar::handle:vertical { background: $line; border-radius: 4px; min-height: 30px; }
 QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical { height: 0; }
-QTableWidget { background: white; alternate-background-color: #f7f9fc; border: 1px solid #e4eaf2; border-radius: 8px; gridline-color: #edf1f7; selection-background-color: #e1ecff; selection-color: #174fa7; }
-QHeaderView { background: #f3f6fb; }
-QHeaderView::section { background: #f3f6fb; border: none; padding: 6px 8px; color: #60708a; font-size: 11px; font-weight: 600; }
-QSlider::groove:horizontal { background: #d9e2ee; height: 6px; border-radius: 3px; }
-QSlider::sub-page:horizontal { background: #2265d8; border-radius: 3px; }
-QSlider::handle:horizontal { background: #2265d8; border: 3px solid white; width: 14px; height: 14px; margin: -7px 0; border-radius: 10px; }
-QSplitter::handle { background: transparent; width: 12px; }
-QStatusBar { background: #f2f5fa; color: #68778e; }
-QProgressBar { border: none; background: #e3ebf6; border-radius: 6px; text-align: center; }
-QProgressBar::chunk { background: #2265d8; border-radius: 6px; }
+QTableWidget { background: $panel; alternate-background-color: $background; border: none; gridline-color: $soft; selection-background-color: $selected; selection-color: $ink; }
+QHeaderView { background: $background; }
+QHeaderView::section { background: $background; border: none; padding: 6px 8px; color: $muted; font-size: 12px; font-weight: 500; }
+QSlider::groove:horizontal { background: $soft; height: 6px; border-radius: 3px; }
+QSlider::sub-page:horizontal { background: $accent; }
+QSlider::handle:horizontal { background: $accent; width: 16px; height: 16px; margin: -5px 0; border-radius: 8px; }
+QSplitter::handle { background: $background; width: 8px; }
+QStatusBar { background: $background; color: $muted; }
+QProgressBar { border: none; background: $soft; border-radius: 4px; text-align: center; }
+QProgressBar::chunk { background: $accent; }
+QToolTip { color: $ink; background: $panel; border: 1px solid $line; padding: 8px; }
+QMenu { color: $ink; background: $panel; border: 1px solid $line; }
+QMenu::item:selected { background: $selected; }
+QFrame#banner { background: $selected; border: 1px solid $line; border-radius: 6px; }
+QFrame#drop { background: #101214; border: 2px dashed $line; border-radius: 8px; }
+QFrame#drop QLabel,QFrame#drop QPushButton[role="quiet"] { color: #e5e7eb; }
+QFrame#drop QLabel#dropTitle { color: white; font-size: 24px; font-weight: 600; }
+QLabel#handTitle { font-size: 13px; color: $muted; }
+QLabel#saveState[state="error"] { color: $ink; font-weight: 700; }
 '''
 
 SHORTCUTS='Space  Play / pause\n← / →  Step (step size in Settings)\nShift+← / →  One frame\nS / E  Climb start / end\nP  Mark point\nL / R  Left / right clip\nQ / W  Left / right rest\nC / V  Left / right chalk\nDelete  Remove selected\nCtrl+[ / Ctrl+]  Previous / next video\nCtrl+Z / Ctrl+Y  Undo / redo\nMeasurements save automatically.'
@@ -73,26 +87,8 @@ CHECKLIST='Best results: tripod, wall straight on · 1080p or 4K at 60 fps · th
 
 # Colour owned by the data; actions are monochrome.
 ACCENTS={'clip':'#245fc4','rest':'#117451','chalk':'#7844b5'}
-TINTS={False:{'clip':('#e8f0fe','#1f5fd1','#c5d8fb'),'rest':('#e3f5ee','#137054','#bfe5d5'),'chalk':('#f2eafc','#7444b8','#dccaf5')},
-       True:{'clip':('#1c3358','#a9c8ff','#34558a'),'rest':('#16403a','#8fe6c1','#2a6352'),'chalk':('#33264d','#d6bdff','#55407a')}}
 def extra_style(dark):
-    ink,on_ink,ink_hover,muted,banner,banner_border,drop,drop_line,warn=('#e8edf4','#101824','#ffffff','#8fa1bb','#1c3a5e','#2f5b8f','#0d1522','#43546d','#ffad74') if dark else ('#141a24','#ffffff','#2b3442','#7a879b','#e8f0fe','#c5d8fb','#122137','#4d6180','#c4521c')
-    rules=[f'QPushButton[role="primary"] {{ background: {ink}; color: {on_ink}; border: 1px solid {ink}; font-weight: 600; }}',
-           f'QPushButton[role="primary"]:hover {{ background: {ink_hover}; border-color: {ink_hover}; }}',
-           f'QPushButton[role="primary"]:disabled {{ background: transparent; color: {muted}; border: 1px solid {muted}; }}',
-           f'QFrame#banner {{ background: {banner}; border: 1px solid {banner_border}; border-radius: 10px; }}',
-           f'QFrame#drop {{ background: {drop}; border: 2px dashed {drop_line}; border-radius: 12px; }}',
-           'QFrame#drop QLabel { color: #c4d1e4; } QFrame#drop QLabel#dropTitle { color: #ffffff; font-size: 24px; font-weight: 700; }',
-           'QFrame#drop QPushButton[role="quiet"] { color: #c4d1e4; text-decoration: underline; }',
-           f'QLabel#saveState[state="error"] {{ color: {warn}; font-weight: 600; }}',
-           f'QLabel#handTitle {{ font-size: 11px; font-weight: 700; letter-spacing: 1px; color: {muted}; }}']
-    for kind,(bg,fg,line) in TINTS[dark].items():
-        rules+=[f'QPushButton[role="start"][kind="{kind}"] {{ background: {bg}; color: {fg}; border: 1px solid {line}; font-weight: 600; }}',
-                f'QPushButton[role="start"][kind="{kind}"]:hover {{ border: 1px solid {ACCENTS[kind]}; }}',
-                f'QPushButton[role="stop"][kind="{kind}"] {{ background: {ACCENTS[kind]}; color: white; border: 1px solid {ACCENTS[kind]}; font-weight: 700; }}']
-    disabled=('#202d40','#7b8ca3','#2b394e') if dark else ('#f0f3f7','#8996a8','#e5eaf0')
-    rules.append(f'QPushButton[role][kind]:disabled {{ background: {disabled[0]}; color: {disabled[1]}; border: 1px solid {disabled[2]}; }}')
-    return '\n'.join(rules)
+    return '\n'.join(f'QPushButton[role="stop"][kind="{kind}"] {{ background: {color}; color: white; border-color: {color}; font-weight: 600; }}' for kind,color in ACCENTS.items())
 
 def label(text,name=None,wrap=True):
     w=QLabel(text)
@@ -134,7 +130,7 @@ class BarDelegate(QStyledItemDelegate):
 
 def step_card(name):
     frame=QFrame();frame.setObjectName('step');box=QVBoxLayout(frame);box.setContentsMargins(10,8,10,9);box.setSpacing(6)
-    if name:box.addWidget(label(name,'eyebrow',wrap=False))
+    if name:box.addWidget(label({'ATHLETE · START · END':'Athlete and climb','DURING THE CLIMB':'Hands and points'}.get(name,name),'section',wrap=False))
     return frame,box
 
 def menu_button(text,items,tip):
@@ -158,6 +154,8 @@ class SettingsDialog(QDialog):
         close=QDialogButtonBox(QDialogButtonBox.StandardButton.Close);close.rejected.connect(self.reject);form.addRow(close)
 
 def build(w):
+    from .platform_runtime import interface_font
+    w.setFont(interface_font())
     # Retain inherited editor fields and callbacks while moving visible controls.
     old=w.takeCentralWidget();old.setParent(w);old.hide();w.legacy_widget=old
     root=QWidget();root.setObjectName('workspace');outer=QVBoxLayout(root);outer.setContentsMargins(14,10,14,4);outer.setSpacing(8);w.setCentralWidget(root)
@@ -169,13 +167,19 @@ def build(w):
     for text,cb in [('Add videos…',w.open_video),('Load labels…',w.load_labels)]:menu.addAction(text,cb)
     menu.addSeparator();menu.addAction('Storage…',w.show_storage)
     settings=QAction('Settings…',w);settings.setMenuRole(QAction.MenuRole.PreferencesRole);settings.setShortcut('Ctrl+,');settings.triggered.connect(w.settings_dialog.exec);menu.addAction(settings)
-    export_items=[('Selected attempts · HTML + CSV…',w.export_all),('PDF report…',w.export_pdf),(None,None),('This project as a file…',lambda:w.show_projects('export'))]
+    export_items=[('Coaching report…',w.export_coaching),('Selected attempts · HTML + CSV…',w.export_all),('PDF report…',w.export_pdf),(None,None),('This project as a file…',lambda:w.show_projects('export'))]
     menu=bar.addMenu('Export')
     for text,cb in export_items:
         if text:menu.addAction(text,cb)
         else:menu.addSeparator()
     menu=bar.addMenu('Measurements');menu.addAction('Clear this athlete…',w.clear_athlete);menu.addAction('Clear measurements…',w.clear_measurements)
-    menu=bar.addMenu('View');w.theme_button=menu.addAction('Dark mode',w.toggle_theme);menu.addAction('Fit video',w.image.fit)
+    menu=bar.addMenu('View');w.theme_button=menu.addAction('Dark mode',w.toggle_theme)
+    from PySide6.QtGui import QActionGroup
+    appearance=menu.addMenu('Appearance');w.appearance_actions={};group=QActionGroup(w);group.setExclusive(True)
+    for title,value in [('System','system'),('Light','light'),('Dark','dark')]:
+        action=appearance.addAction(title);action.setCheckable(True);group.addAction(action);action.triggered.connect(lambda checked=False,v=value:apply_theme(w,v));w.appearance_actions[value]=action
+    contrast=menu.addAction('Increase contrast');contrast.setCheckable(True);contrast.setChecked(w.settings.value('high_contrast',False,type=bool));contrast.toggled.connect(lambda on:(w.settings.setValue('high_contrast',on),apply_theme(w,w.appearance)))
+    menu.addAction('Fit video',w.image.fit)
     menu=bar.addMenu('Help')
     for text,cb in [('Recording tips…',w.show_tips),('Show tour',w.show_tour),('Keyboard shortcuts',lambda:QMessageBox.information(w,'Keyboard shortcuts',SHORTCUTS))]:menu.addAction(text,cb)
     menu.addSeparator();menu.addAction('Check for updates…',lambda:w.check_updates(manual=True))
@@ -187,7 +191,8 @@ def build(w):
     w.project_button=button('Project',w.show_projects);w.project_button.setToolTip('Current project. Click to create, switch, export or import projects.');top.addWidget(w.project_button)
     w.collection_bar=QWidget();queue=QHBoxLayout(w.collection_bar);queue.setContentsMargins(0,0,0,0);queue.setSpacing(8)
     w.video_selector=QComboBox();w.video_selector.setMinimumWidth(100);w.video_selector.setSizePolicy(QSizePolicy.Policy.Ignored,QSizePolicy.Policy.Fixed);w.video_selector.setPlaceholderText('No videos yet: drop them into the window');w.video_selector.setToolTip('Videos in this project · Ctrl+[ / Ctrl+] for previous / next')
-    w.video_selector.currentIndexChanged.connect(w.select_video);queue.addWidget(w.video_selector,1)
+    w.video_selector.currentIndexChanged.connect(w.select_video);w.video_selector.hide()
+    w.current_video_label=label('Choose a project video','currentVideo',wrap=False);w.current_video_label.setMinimumWidth(100);w.current_video_label.setSizePolicy(QSizePolicy.Policy.Ignored,QSizePolicy.Policy.Fixed);queue.addWidget(w.current_video_label,1)
     w.video_count=label('','muted',wrap=False);queue.addWidget(w.video_count)
     w.add_button=button('+ Add videos',w.open_video);w.add_button.setToolTip('Add video files to this project, or drop them anywhere in the window. The last folder used is remembered.');queue.addWidget(w.add_button)
     top.addWidget(w.collection_bar,1);top.addSpacing(6)
@@ -211,6 +216,8 @@ def build(w):
     w.main_tabs=QTabWidget();w.main_tabs.setDocumentMode(True);outer.addWidget(w.main_tabs,1)
     split=QSplitter(Qt.Orientation.Horizontal);w.main_tabs.addTab(split,'Measure');w.measure_page=split
     video=QFrame();video.setObjectName('card');v=QVBoxLayout(video);v.setContentsMargins(10,10,10,8);v.setSpacing(6)
+    from .video_navigation import VideoNavigation
+    w.video_navigation=VideoNavigation(w);v.addWidget(w.video_navigation)
     w.empty_hint=QFrame();w.empty_hint.setObjectName('drop');drop=QVBoxLayout(w.empty_hint);drop.setContentsMargins(24,24,24,24);drop.addStretch()
     w.drop_title=label('Drop climbing videos here','dropTitle');w.drop_title.setAlignment(Qt.AlignmentFlag.AlignCenter);drop.addWidget(w.drop_title)
     line=QHBoxLayout();line.addStretch();w.drop_choose=button('Choose files…',w.open_video,'primary');line.addWidget(w.drop_choose);line.addWidget(button('Open project…',w.show_projects));line.addStretch();drop.addLayout(line)
@@ -218,9 +225,9 @@ def build(w):
     checklist=label(CHECKLIST,'muted');checklist.setAlignment(Qt.AlignmentFlag.AlignCenter);drop.addSpacing(10);drop.addWidget(checklist)
     line=QHBoxLayout();line.addStretch();line.addWidget(button('Recording tips',w.show_tips,'quiet'));line.addStretch();drop.addLayout(line);drop.addStretch()
     v.addWidget(w.empty_hint,1)
-    w.image.setParent(video);w.image.setBackgroundBrush(QColor('#122137'));w.image.setAcceptDrops(False);w.image.viewport().setAcceptDrops(False);v.addWidget(w.image,1)
+    w.image.setParent(video);w.image.setBackgroundBrush(QColor('#101214'));w.image.setAcceptDrops(False);w.image.viewport().setAcceptDrops(False);v.addWidget(w.image,1)
     from .scrubber import PrecisionScrubber
-    w.precision_scrubber=PrecisionScrubber();w.precision_scrubber.seek.connect(w.scrub_seconds);w.precision_scrubber.released.connect(w.finish_scrub);v.addWidget(w.precision_scrubber)
+    w.precision_scrubber=PrecisionScrubber();w.precision_scrubber.seek.connect(w.scrub_seconds);w.precision_scrubber.released.connect(w.finish_scrub);w.precision_scrubber.observationSelected.connect(w.select_timeline_event);v.addWidget(w.precision_scrubber)
     w.slider.hide()
     w.transport=QWidget();transport_rows=QVBoxLayout(w.transport);transport_rows.setContentsMargins(0,0,0,0);transport_rows.setSpacing(4);controls=QHBoxLayout();controls.setSpacing(4);transport_rows.addLayout(controls);secondary=QHBoxLayout();secondary.setSpacing(4);transport_rows.addLayout(secondary)
     w.play_button.setParent(w.transport);w.play_button.setProperty('role','primary');w.play_button.setMinimumWidth(80);controls.addWidget(w.play_button)
@@ -246,12 +253,12 @@ def build(w):
     split.addWidget(video)
     w.set_frame_step(w.frame_step.value())
     # The measuring panel follows the climb: athlete, start and end, timers during the climb, review.
-    panel=QWidget();panel.setObjectName('page');measure=QVBoxLayout(panel);measure.setContentsMargins(10,10,10,10);measure.setSpacing(8);panel.setMinimumWidth(380)
-    measurement_scroll=QScrollArea();measurement_scroll.setWidgetResizable(True);measurement_scroll.setMinimumWidth(400);measurement_scroll.setWidget(panel);split.addWidget(measurement_scroll);split.setSizes([950,380]);w.workspace_tabs=None;w.measurement_scroll=measurement_scroll
+    panel=QWidget();panel.setObjectName('page');measure=QVBoxLayout(panel);measure.setContentsMargins(10,10,10,10);measure.setSpacing(8);panel.setMinimumWidth(320)
+    measurement_scroll=QScrollArea();measurement_scroll.setWidgetResizable(True);measurement_scroll.setMinimumWidth(340);measurement_scroll.setWidget(panel);split.addWidget(measurement_scroll);split.setSizes([1000,340]);w.workspace_tabs=None;w.measurement_scroll=measurement_scroll
     w.empty_panel=label('Load a video to start measuring.\n\nThe panel then follows the climb: name the athlete, mark the start, time each hand’s clips, rests and chalking, mark the end.','muted');measure.addWidget(w.empty_panel)
     w.boundary_box,box=step_card('ATHLETE · START · END')
     line=QHBoxLayout();line.addWidget(w.climber,1);w.climber.setPlaceholderText('Athlete name');line.addWidget(label('Attempt','muted',wrap=False));w.attempt.setMaximumWidth(55);line.addWidget(w.attempt)
-    line.addWidget(menu_button('⋯',[('New attempt',w.new_attempt),('Open another attempt…',w.choose_attempt),('Set route…',w.set_route),(None,None),('Clear this athlete…',w.clear_athlete),('Clear measurements…',w.clear_measurements)],'More actions for this athlete'));box.addLayout(line)
+    line.addWidget(menu_button('⋯',[('New attempt',w.new_attempt),('Open another attempt…',w.choose_attempt),('Set route…',w.set_route),('Coaching goal and context…',w.edit_coaching),(None,None),('Clear this athlete…',w.clear_athlete),('Clear measurements…',w.clear_measurements)],'More actions for this athlete'));box.addLayout(line)
     line=QHBoxLayout();w.start_button=KeyButton('Mark start','S',w.set_start);w.start_button.setToolTip('Pause on the first grip, then mark the climb start (S). Press again to move it to the current frame.');line.addWidget(w.start_button,1)
     w.start_clear=button('×',lambda:w.clear_boundary('start'),'quiet');w.start_clear.setToolTip('Remove the climb start');w.start_clear.setAccessibleName('Remove climb start');line.addWidget(w.start_clear);box.addLayout(line);line=QHBoxLayout()
     w.end_button=KeyButton('Mark end','E',w.set_failure);w.end_button.setToolTip('Pause on the fall (rope weighted) or the top, then mark the end (E).');line.addWidget(w.end_button,1)
@@ -261,20 +268,20 @@ def build(w):
     for hidden in (w.start_status,w.end_status):hidden.setParent(w.boundary_box);hidden.hide()
     measure.addWidget(w.boundary_box)
     w.climb_box,box=step_card('DURING THE CLIMB')
-    line=QHBoxLayout();line.addWidget(label('Clip method','muted',wrap=False));w.clip_method=QComboBox()
+    line=QHBoxLayout();line.addWidget(label('Method','muted',wrap=False));w.clip_method=QComboBox()
     for title,value in [('Not set',None),('Rope to mouth',"mouth"),('Direct · no mouth',"direct")]:w.clip_method.addItem(title,value)
     w.clip_method.setToolTip('Captured separately for each hand when its clip timer starts. Changing this selector affects the next clip only.\nRope to mouth: rope pulled up and held in the mouth before clipping.\nDirect: moved to a favourable position and clipped without the mouth.')
-    line.addWidget(w.clip_method,1);line.addWidget(label('Quickdraw','muted',wrap=False));w.draw.setMaximumWidth(62);w.draw.setToolTip('Number of the next quickdraw; advances after each completed clip.');line.addWidget(w.draw);box.addLayout(line)
+    line.addWidget(w.clip_method,1);line.addWidget(label('Draw','muted',wrap=False));w.draw.setMaximumWidth(62);w.draw.setToolTip('Number of the next quickdraw; advances after each completed clip.');line.addWidget(w.draw);box.addLayout(line)
     # Timers: two columns (hands) × three activities, in the timeline's colours. A running tile fills and shows its time.
     w.hands_box=QWidget();grid=QGridLayout(w.hands_box);grid.setContentsMargins(0,0,0,0);grid.setHorizontalSpacing(8);grid.setVerticalSpacing(6);w.hand_timer_buttons={};w.hand_timer_cancel={};w.hand_timer_status={}
     keys={'clip':{'left':'L','right':'R'},'rest':{'left':'Q','right':'W'},'chalk':{'left':'C','right':'V'}}
     for col,hand in enumerate(('left','right')):
-        grid.addWidget(label(hand.upper()+' HAND','handTitle',wrap=False),0,col)
+        grid.addWidget(label(hand.capitalize()+' hand','handTitle',wrap=False),0,col)
         for row,kind in enumerate(('clip','rest','chalk'),1):
             cell=QWidget();line=QHBoxLayout(cell);line.setContentsMargins(0,0,0,0);line.setSpacing(2)
             control=KeyButton(kind.capitalize(),keys[kind][hand],lambda checked=False,k=kind,h=hand:w.toggle_hand_timer(k,h),'start');control.setProperty('kind',kind);control.setMinimumHeight(44);control.setSizePolicy(QSizePolicy.Policy.Ignored,QSizePolicy.Policy.Fixed);control.setAccessibleName(hand.capitalize()+' hand '+kind)
             control.setToolTip(f'{hand.capitalize()} hand {kind}: press to start the timer at this frame, press again to stop it (key {keys[kind][hand]}).');line.addWidget(control,1)
-            cancel=button('×',lambda checked=False,k=kind,h=hand:w.cancel_hand_timer(k,h),'quiet');cancel.setToolTip('Discard this running timer');cancel.setAccessibleName('Discard '+hand+' '+kind+' timer');cancel.setFixedWidth(22);line.addWidget(cancel)
+            cancel=button('×',lambda checked=False,k=kind,h=hand:w.cancel_hand_timer(k,h),'quiet');cancel.setToolTip('Discard this running timer');cancel.setAccessibleName('Discard '+hand+' '+kind+' timer');cancel.setFixedWidth(32);line.addWidget(cancel)
             w.hand_timer_buttons[kind,hand]=control;w.hand_timer_cancel[kind,hand]=cancel;grid.addWidget(cell,row,col)
     box.addWidget(w.hands_box)
     w.point_box=QWidget();points=QVBoxLayout(w.point_box);points.setContentsMargins(0,4,0,0);points.setSpacing(6)
@@ -284,6 +291,9 @@ def build(w):
     points.addLayout(line);w.points_table.setMinimumHeight(0);w.points_table.setMaximumHeight(96);points.addWidget(w.points_table);box.addWidget(w.point_box)
     w.legacy_rest_panel=QWidget();legacy=QHBoxLayout(w.legacy_rest_panel);legacy.setContentsMargins(0,0,0,0);legacy.addWidget(label('Earlier rest timer','muted'));legacy.addWidget(button('Stop',w.stop_legacy_rest));legacy.addWidget(button('Cancel',lambda:w.cancel_hand_timer('rest','none'),'quiet'));box.addWidget(w.legacy_rest_panel)
     measure.addWidget(w.climb_box)
+    from .coaching_ui import FootworkPanel
+    w.footwork_panel=FootworkPanel(w);measure.addWidget(w.footwork_panel)
+    coach=button('Coaching goal and context…',w.edit_coaching,'quiet');measure.addWidget(coach)
     w.events_card,box=step_card('')
     w.events_toggle=button('Events',w.toggle_events,'quiet');w.events_toggle.setStyleSheet('text-align: left; font-weight: 600;');box.addWidget(w.events_toggle)
     w.events_body=QWidget();body=QVBoxLayout(w.events_body);body.setContentsMargins(0,0,0,0);body.setSpacing(6)
@@ -332,19 +342,20 @@ def build(w):
     # Kept for Help › Diagnostics; the status bar is for messages only.
     w.usage_label=label('Resource usage: sampling starts when the app opens.','muted');w.usage_label.hide()
     w.setAcceptDrops(True)
-    apply_theme(w,w.settings.value('theme','light'));w.setWindowTitle(APP_NAME)
+    QApplication.instance().styleHints().colorSchemeChanged.connect(lambda *_:apply_theme(w,'system') if w.appearance=='system' else None)
+    apply_theme(w,w.settings.value('theme','system'));w.setWindowTitle(APP_NAME)
 
 
 def apply_theme(w,theme):
     from PySide6.QtGui import QPalette
     from PySide6.QtWidgets import QApplication
-    dark=theme=='dark';style=STYLE
-    mapping={'#125a62':'#79dccb','#f2f5fa':'#101824','#ffffff':'#182333','#25334a':'#d6e2f4','#15263f':'#edf4ff','#65748b':'#9dadc5','#68778e':'#9dadc5','#e3eaf6':'#28394f','#365578':'#b3c9e8','#d8e1ed':'#34445c','#eaf1fb':'#243a55','#8ba9d0':'#52769e','#dce8f7':'#2b4464','#e5f5ef':'#173f36','#137054':'#8ce3bb','#c3e5d8':'#285746','#fff0e8':'#4a3027','#9b4721':'#ffc4a1','#f4d8c9':'#78513c','#6c7b91':'#a9b7cc','#f0f3f7':'#202d40','#a1adbd':'#66788f','#e5eaf0':'#2b394e','#d7e0ec':'#34445c','#e4edfd':'#29486e','#f3f6fa':'#152131','#c6d2e3':'#40536c','#f7f9fc':'#1c2a3e','#e4eaf2':'#34445c','#edf1f7':'#24344a','#e1ecff':'#2c4c73','#174fa7':'#c5ddff','#f3f6fb':'#1e2c40','#60708a':'#a5b8d2','#d9e2ee':'#34445c','#e3ebf6':'#26384f','#e1e8f2':'#2c3c54'}
-    if dark:
-        import re
-        style=re.sub(r'#[0-9a-fA-F]{6}',lambda m:mapping.get(m.group(),m.group()),style)
-        style=style.replace('background: white','background: #182333')
+    app=QApplication.instance();dark=theme=='dark' or (theme=='system' and app.styleHints().colorScheme()==Qt.ColorScheme.Dark)
+    tokens=dict(TOKENS[dark])
+    if w.settings.value('high_contrast',False,type=bool):tokens.update(muted=tokens['ink'],line=tokens['ink'])
+    style=STYLE
+    for key,color in tokens.items():style=style.replace('$'+key,color)
     palette=QPalette()
-    for role,color in [(QPalette.ColorRole.Window,'#101824' if dark else '#f2f5fa'),(QPalette.ColorRole.Base,'#182333' if dark else '#ffffff'),(QPalette.ColorRole.AlternateBase,'#1c2a3e' if dark else '#f7f9fc'),(QPalette.ColorRole.Button,'#24344a' if dark else '#ffffff'),(QPalette.ColorRole.WindowText,'#d6e2f4' if dark else '#25334a'),(QPalette.ColorRole.Text,'#d6e2f4' if dark else '#25334a'),(QPalette.ColorRole.ButtonText,'#d6e2f4' if dark else '#25334a'),(QPalette.ColorRole.Highlight,'#2265d8'),(QPalette.ColorRole.HighlightedText,'#ffffff')]:palette.setColor(role,QColor(color))
-    QApplication.instance().setPalette(palette);w.setStyleSheet(style+'\n'+extra_style(dark));w.theme=theme;w.theme_button.setText('Light mode' if dark else 'Dark mode')
+    for role,color in [(QPalette.ColorRole.Window,tokens['background']),(QPalette.ColorRole.Base,tokens['panel']),(QPalette.ColorRole.AlternateBase,tokens['background']),(QPalette.ColorRole.Button,tokens['panel']),(QPalette.ColorRole.WindowText,tokens['ink']),(QPalette.ColorRole.Text,tokens['ink']),(QPalette.ColorRole.ButtonText,tokens['ink']),(QPalette.ColorRole.Highlight,tokens['accent']),(QPalette.ColorRole.HighlightedText,'white')]:palette.setColor(role,QColor(color))
+    app.setPalette(palette);w.setStyleSheet(style+'\n'+extra_style(dark));w.theme='dark' if dark else 'light';w.appearance=theme;w.theme_button.setText('Light mode' if dark else 'Dark mode')
+    for value,action in w.appearance_actions.items():action.setChecked(value==theme)
     w.precision_scrubber.dark=dark;w.precision_scrubber.update();w.comparison_charts.dark=dark;w.comparison_charts.redraw();w.settings.setValue('theme',theme)

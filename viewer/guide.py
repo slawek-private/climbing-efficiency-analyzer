@@ -5,19 +5,19 @@ from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushBu
 
 TIPS = '''
 <h2>Recording climbs for accurate measurements</h2>
-<p>Measurements are only as precise as the footage. A few minutes of set-up makes every athlete comparable.</p>
+<p>Measurements are only as precise as the footage. Choose a camera position that keeps the contacts you want to review visible.</p>
 <h3>Camera position</h3>
 <ul>
 <li><b>Tripod or fixed mount</b>, never handheld. No zooming or panning while recording.</li>
-<li><b>Face the wall straight on</b>, far enough back that the whole route, from the start hold to the top, fits in the frame with a margin. Slightly raised is ideal.</li>
+<li><b>Keep the whole climber and relevant holds in frame</b>, with a margin. A front view usually helps compare hand and foot contacts; an oblique side view can help review body position on overhangs. Check for hidden feet before recording.</li>
 <li><b>Same spot, same zoom for every athlete</b> on the route, so positions and timings compare directly.</li>
-<li>Keep hands, holds and quickdraws visible. Strong side angles hide clips and hand contacts.</li>
+<li>Keep both feet, hands, holds and quickdraws visible. Mark obscured sections as unknown; a foot touching the wall, a smear or a hook still counts as contact.</li>
 </ul>
 <h3>Resolution and frame rate</h3>
 <ul>
 <li><b>1080p minimum</b>; <b>4K</b> for tall routes or when filming from far away, where hands and quickdraws become small.</li>
-<li><b>60 fps recommended</b>: every frame is ~17 ms, so marks are twice as precise as at 30 fps (~33 ms). 30 fps still works.</li>
-<li>Slow-motion (120/240 fps) is not needed and creates very large files.</li>
+<li><b>60 fps recommended</b>: nominal frame spacing is ~17 ms, compared with ~33 ms at 30 fps. Visibility, blur and judgment still limit annotation precision. 30 fps works; do not convert it to 60 fps to invent detail.</li>
+<li>Use higher frame rates only when fast contacts are the question and lighting is sufficient; they increase file size.</li>
 <li>Lock focus and exposure (tap and hold on a phone) so the picture does not pump. Avoid filming against bright windows.</li>
 <li>Turn <b>HDR video off</b> (iPhone: Settings › Camera › Record Video). HDR clips look flat and washed out here.
 H.264 (“Most Compatible”) scrubs most easily; HEVC works too: prepare a smooth preview.</li>
@@ -25,9 +25,7 @@ H.264 (“Most Compatible”) scrubs most easily; HEVC works too: prepare a smoo
 </ul>
 <h3>Keep the original file</h3>
 <p>Copy videos with a USB cable, AirDrop, the Files app or the camera’s SD card.
-<b>YouTube, Google Photos, WhatsApp, Messenger and e-mail re-encode videos</b>: they recompress them, often lower the resolution or
-frame rate, and produce a different file. Google Photos “Storage saver” and iCloud “Optimise storage” keep reduced copies, so download the
-original or “unmodified original”. Measurements are tied to the exact file, so keep the file you measured.</p>
+<b>YouTube produces playback transcodes; Google Photos “Storage saver” and messaging apps may recompress footage.</b> Google Photos “Original quality” and an original file attached to e-mail can preserve the uploaded file. Download an original or “unmodified original”, rather than a playback copy. Measurements are tied to the exact file, so keep the file you measured.</p>
 '''
 
 
@@ -110,5 +108,6 @@ def steps(w):
         dict(title='2 · Start and end', text='Name the athlete. Pause on the first grip and press S, then on the fall or the top press E. The climb time appears below.', target=lambda:rect_of(w, w.boundary_box), before=panel(w.boundary_box)),
         dict(title='3 · Time each hand', text='Clip, rest and chalk timers for the left and right hand. Press once to start at the current frame, again to stop. A running timer fills its tile and shows its time.', target=lambda:rect_of(w, w.hands_box), before=panel(w.hands_box)),
         dict(title='4 · Named points', text='Mark when the athlete reaches a shared point, such as a rest or the roof (P). Use the same names for every athlete to compare their splits.', target=lambda:rect_of(w, w.point_box), before=panel(w.point_box)),
-        dict(title='5 · Compare and export', text='Everything saves automatically. Compare ranks every measured climb, with charts and side-by-side video; Export writes HTML, CSV and PDF. Replay this tour from Help.', target=lambda:tab_rect(w, w.main_tabs, 1)),
+        dict(title='5 · Review footwork', text='Expand Footwork review for left/right slips, deliberate releases and both-feet-off intervals. Review coverage explicitly and mark hidden feet as obscured. Confirm intent; intentional dynamic moves stay separate from unplanned releases.', target=lambda:rect_of(w,w.footwork_panel), before=panel(w.footwork_panel)),
+        dict(title='6 · Coach and export', text='Record a session goal, athlete reflection and next-session action in Coaching goal. Export a coaching review with an evidence index, printable PDF and optional local video sections. Compare describes timings; it does not rank ability. Replay this tour from Help.', target=lambda:tab_rect(w, w.main_tabs, 1)),
     ]

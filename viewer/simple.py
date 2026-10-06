@@ -38,7 +38,7 @@ class Window(LegacyWindow):
         self.workspace=Workspace(self.project.workspace_file);self.session_histories={};self.session_indexes={};self.collection_worker=None
         self.updater=None;self.release=None;self.pending_update=None;self.guidance=False;self.save_error=None;self.workspace_error=None
         self.autosave_timer=QTimer();self.autosave_timer.setSingleShot(True);self.autosave_timer.setInterval(600);self.autosave_timer.timeout.connect(self.autosave)
-        self.resource_monitor=None;self.preview_worker=None
+        self.resource_monitor=None;self.preview_worker=None;self.replay_range=None;self.coaching_export_worker=None
         self.simple_ready=False
         self.async_decode=True;self.decoder=ThreadPoolExecutor(max_workers=1);self.decode_future=None;self.decode_requested=None;self.decode_seek=False;self.play_after_decode=False
         self.decode_poll=QTimer();self.decode_poll.setInterval(20);self.decode_poll.timeout.connect(self.poll_decode)
@@ -105,6 +105,7 @@ class Window(LegacyWindow):
         build(self);self.install_timer_shortcuts()
         points=self.workspace.shared_points();self.point_name.setText(self.settings.value('last_point','') or (points[-1] if points else 'A'))
         self.refresh_live();self.refresh_collection();self.refresh_preview_status();self.update_project_label()
+        if not video and self.workspace.videos:self.show_view(self.library)
     def install_timer_shortcuts(self):
         actions={'Ctrl+[':lambda:self.next_video(-1),'Ctrl+]':lambda:self.next_video(1),'Delete':self.delete_selected,'Shift+Left':lambda:self.step(-1,True),'Shift+Right':lambda:self.step(1,True),'S':self.set_start,'E':self.set_failure,'P':self.add_point,'L':lambda:self.toggle_hand_timer('clip','left'),'R':lambda:self.toggle_hand_timer('clip','right'),'Q':lambda:self.toggle_hand_timer('rest','left'),'W':lambda:self.toggle_hand_timer('rest','right'),'C':lambda:self.toggle_hand_timer('chalk','left'),'V':lambda:self.toggle_hand_timer('chalk','right')}
         for key,callback in actions.items():
@@ -117,7 +118,7 @@ class Window(LegacyWindow):
         self.mark('contact',hand)
     def toggle_hand_timer(self,kind,hand):
         if not self.ready_to_mark():return
-        d=copy.deepcopy(self.document());d['schema_version']='1.2.0';now=self.reader.point(self.frame_number)
+        d=copy.deepcopy(self.document());d['schema_version']='1.3.0' if d['schema_version']=='1.3.0' else '1.2.0';now=self.reader.point(self.frame_number)
         pending=next((e for e in d['open_events'] if e['kind']==kind and e['hand']==hand),None)
         if pending:
             if now['seconds']<=pending['start']['seconds']:
@@ -180,12 +181,15 @@ class Window(LegacyWindow):
         if hasattr(self,'pending_scrub'):del self.pending_scrub
         self.show_frame(base+delta*(1 if single else self.frame_step.value()))
     def select_timeline_event(self,identifier):
+        if any(e["id"]==identifier for e in self.document().get("footwork",{}).get("events",[])):
+            self.footwork_panel.select(identifier);return
         row=next((i for i,e in enumerate(self.visible_events) if e['id']==identifier),None)
         if row is not None:self.table.selectRow(row);self.table.setFocus()
     def clear_boundary(self,key):
         if not self.history:return
         d=copy.deepcopy(self.document());d[key]=None;d['outcome']='unknown' if key=='end' else d['outcome'];d['reviewed']={k:False for k in d['reviewed']};self.commit(d)
     def delete_selected(self):
+        if QApplication.focusWidget() in (self.footwork_panel.table,self.footwork_panel.table.viewport()):self.footwork_panel.delete();return
         if QApplication.focusWidget() in (self.points_table,self.points_table.viewport()):self.delete_point()
         else:self.delete_event()
     def delete_event(self):
@@ -242,7 +246,7 @@ class Window(LegacyWindow):
             self.slider.blockSignals(True);self.slider.setValue(number);self.slider.blockSignals(False)
         self.refresh_live()
         if self.play_after_decode:self.start_playback()
-        if self.playing and number==len(self.reader.times)-1:self.pause()
+        if self.playing and number==len(self.reader.times)-1 and not self.replay_range:self.pause()
         if self.playing and number!=self.decode_requested:self.submit_decode();self.decode_poll.start()
     def start_playback(self):
         self.play_after_decode=False;self.playing=True;self.reset_clock();self.timer.start();self.play_button.setText('Pause · Space')
@@ -260,11 +264,17 @@ class Window(LegacyWindow):
         else:self.start_playback()
     def tick(self):
         if not self.reader or not self.playing:return
+        if self.replay_range and self.reader.times[self.frame_number]>=self.replay_range[1]:
+            bounds=self.replay_range;self.pause();self.show_frame(max(0,bisect.bisect_right(self.reader.times,bounds[0])-1));self.replay_range=bounds
+            if self.decode_future is not None:self.play_after_decode=True
+            else:self.start_playback()
+            return
         rate=(.25,.5,1,1.5,2)[self.speed.currentIndex()];seconds=self.play_start+self.elapsed.elapsed()/1000*rate
         frame=min(len(self.reader.times)-1,max(0,bisect.bisect_right(self.reader.times,seconds)-1))
         if frame!=self.frame_number and (self.decode_future is None or frame!=self.decode_requested):self.show_frame(frame)
-        if not self.async_decode and self.frame_number==len(self.reader.times)-1:self.pause()
+        if not self.async_decode and self.frame_number==len(self.reader.times)-1 and not self.replay_range:self.pause()
     def pause(self):
+        self.replay_range=None
         self.play_after_decode=False
         was_playing=self.playing
         super().pause()
@@ -294,6 +304,8 @@ class Window(LegacyWindow):
         else:super().begin_video(path)
         self.refresh_collection();self.refresh_live()
     def closeEvent(self,event):
+        if self.coaching_export_worker and self.coaching_export_worker.isRunning():
+            self.coaching_export_worker.requestInterruption();self.coaching_export_worker.wait()
         if self.preview_worker and self.preview_worker.isRunning():
             self.preview_worker.requestInterruption();self.preview_worker.wait()
         if self.resource_monitor:
@@ -313,18 +325,32 @@ class Window(LegacyWindow):
             if hasattr(self,'sync_view'):self.sync_view.shutdown()
             if hasattr(self,'library'):self.library.shutdown()
             if self.pending_update:self.pending_update();self.pending_update=None
+    def edit_coaching(self):
+        from .coaching_ui import edit_coaching
+        edit_coaching(self)
+    def export_coaching(self):
+        from .coaching_export_ui import export_dialog
+        export_dialog(self)
+    def replay_observation(self,event):
+        if not self.reader:return
+        self.pause();a=max(0,event["start"]["seconds"]-2);b=min(self.reader.times[-1],(event.get("end") or event["start"])["seconds"]+2)
+        self.show_frame(max(0,bisect.bisect_right(self.reader.times,a)-1));self.replay_range=(a,b)
+        if self.decode_future is not None:self.play_after_decode=True
+        else:self.start_playback()
     def refresh_live(self):
         if not self.simple_ready:return
         d=self.document();now=self.reader.times[self.frame_number] if self.reader else 0
+        if hasattr(self,'footwork_panel'):self.footwork_panel.refresh(d,now)
         if hasattr(self,"empty_hint"):
             loaded=bool(self.reader);opening=bool(self.worker and self.worker.isRunning())
             for widget in (self.image,self.precision_scrubber,self.transport,self.boundary_box,self.climb_box,self.events_card):widget.setVisible(loaded)
             self.empty_hint.setVisible(not loaded);self.empty_panel.hide();self.measure_page.widget(0).layout().activate();self.measurement_scroll.setVisible(loaded and not self.settings.value('inspector_hidden',False,type=bool))
-            self.active_timers.setVisible(loaded and not self.measurement_scroll.isVisible() and bool(d and d['open_events']))
-            self.active_timers.setText(' · '.join(f"{e['hand'].capitalize()} {e['kind']} running: {max(0,now-e['start']['seconds']):.1f} s" for e in (d['open_events'] if d else [])))
+            foot_pending=d.get('footwork',{}).get('pending') if d else None
+            self.active_timers.setVisible(loaded and not self.measurement_scroll.isVisible() and bool(d and (d['open_events'] or foot_pending)))
+            self.active_timers.setText((f"Both feet off running: {max(0,now-foot_pending['start']['seconds']):.1f} s · " if foot_pending else '')+' · '.join(f"{e['hand'].capitalize()} {e['kind']} running: {max(0,now-e['start']['seconds']):.1f} s" for e in (d['open_events'] if d else [])))
             self.drop_title.setText(f'Opening {self.video_path.name}…' if opening and self.video_path else 'Drop climbing videos here')
             self.drop_choose.setVisible(not opening);self.drop_note.setText('Reading the file once: checksum and every frame timestamp. Cached afterwards.' if opening else 'MP4, MOV or MKV · originals stay where they are, nothing is uploaded')
-            if loaded:self.position.setText(f'<span style="font-size:19px;font-weight:600">{timecode(now)}</span>&nbsp;&nbsp;<span style="font-size:11px;color:#8996a8">frame {self.frame_number}</span>')
+            if loaded:self.position.setText(f'<span style="font-size:19px;font-weight:600">{timecode(now)}</span>&nbsp;&nbsp;<span style="font-size:11px;color:{"#b2b8bf" if self.theme=="dark" else "#59616b"}">frame {self.frame_number}</span>')
             self.start_button.setText(f"Replace start · {d['start']['seconds']:.3f} s" if d and d['start'] else 'Mark start');self.start_clear.setVisible(bool(d and d['start']))
             self.end_button.setText(f"Replace end · {d['end']['seconds']:.3f} s · "+{'failed':'fell','completed':'topped'}.get(d['outcome'],d['outcome']) if d and d['end'] else 'Mark end')
             self.end_edit.setVisible(bool(d and d['end']));self.end_clear.setVisible(bool(d and d['end']))
@@ -474,6 +500,8 @@ class Window(LegacyWindow):
             points=[p for p in (d['start'],d['end']) if p]
             for e in d['events']+d['open_events']:points.extend([e['start']]+([e['end']] if 'end' in e else []))
             points.extend(p['point'] for p in d.get('checkpoints',[]))
+            from .footwork import validate_track
+            points.extend(validate_track(d))
             if any(p!=self.reader.point(p['frame']) for p in points):raise ValueError('A label does not match the exact video frame')
             d['source']=copy.deepcopy(expected);self.history=History(d);self.label_path=Path(path);self.saved=copy.deepcopy(d);self.settings.setValue('labels_folder',str(Path(path).parent));self.refresh();return True
         except Exception as e:
@@ -660,7 +688,11 @@ class Window(LegacyWindow):
         current=str(self.video_path.resolve()) if self.video_path else None
         index=self.workspace.videos.index(current) if current in self.workspace.videos else -1
         self.video_selector.setCurrentIndex(index);self.video_selector.blockSignals(False)
-        self.video_count.setText(f'{index+1} of {len(self.workspace.videos)}' if index>=0 else f'{len(self.workspace.videos)} videos' if self.workspace.videos else '')
+        self.video_count.setText(f'Viewing {index+1}/{len(self.workspace.videos)}' if index>=0 else f'{len(self.workspace.videos)} videos')
+        title='Open now: '+Path(current).name if current else 'Choose a project video'
+        self.current_video_label.setText(title);self.current_video_label.setToolTip(title)
+        self.video_navigation.refresh(self.workspace.videos,current)
+        self.library.update_heading()
         documents=list(self.workspace.documents())
         if self.document() and current:
             documents=[d for d in documents if not (d.get('attempt_id')==self.document().get('attempt_id') if d.get('attempt_id') else d['source']['sha256']==self.document()['source']['sha256'] and d['attempt']==self.document()['attempt'])];documents.append(self.document())
@@ -798,7 +830,7 @@ class Window(LegacyWindow):
         dialog.exec()
     def open_project(self,project):
         """Switch to another project; the current one is saved first. Returns False when the user cancels."""
-        if project==self.project:return True
+        if project==self.project:self.show_view(self.library);return True
         if not self.allow_change():return False
         self.remember_current();self.pause()
         for worker in (self.collection_worker,getattr(self.library,'bulk',None),self.preview_worker):
@@ -816,8 +848,7 @@ class Window(LegacyWindow):
         self.project=project;project.touch();self.settings.setValue('current_project',project.slug)
         self.workspace=Workspace(project.workspace_file);self.session_histories={};self.sync_view.clear();self.library.meta.clear();self.library.status.clear()
         self.refresh_collection();self.refresh_live();self.refresh_preview_status();self.update_project_label()
-        if self.main_tabs.currentWidget() is self.library:self.library.activate()
-        if self.workspace.videos:self.begin_video(Path(self.workspace.videos[0]))
+        self.library.shutdown();self.show_view(self.library);self.library.activate()
         self.statusBar().showMessage(f'Opened project “{project.name}”.',6000);return True
     def show_storage(self):
         from .storage import StorageDialog
@@ -828,6 +859,8 @@ class Window(LegacyWindow):
         keep.update(t.reader.index['source']['sha256'] for t in self.sync_view.tiles)
         bulk=self.library.bulk
         if bulk and bulk.isRunning():keep.update(m['sha256'] for p,m in self.library.meta.items() if p in bulk.paths and 'sha256' in m)
+        worker=self.coaching_export_worker
+        if worker and worker.isRunning():keep.update(d['source']['sha256'] for d in worker.documents)
         return keep
     def enforce_storage(self,keep=()):
         from . import storage

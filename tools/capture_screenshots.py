@@ -7,6 +7,8 @@ from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QApplication
 from viewer.labels import empty_labels,History,make_event
 from viewer.video import index_video
+from viewer.footwork import enable
+from viewer.coaching_report import export_report
 from viewer.workspace import Workspace
 import viewer.simple as simple
 
@@ -48,6 +50,10 @@ def main():
                 doc['events'].append(make_event(pending,point(start+1.5+i*.4)))
             for kind,hand,start,end in [('rest','left',34,37+i),('chalk','left',35,36),('rest','right',49,50+i)]:
                 doc['events'].append(make_event({'kind':kind,'hand':hand,'target':None,'start':point(start),'confidence':1,'notes':'Synthetic demo event'},point(end)))
+            track=enable(doc);doc['coaching']={'goal':'Keep precise foot contacts through the roof','reflection':'I rushed the right-foot placement before moving','action':'Pause, choose the foothold, then commit','retest':'Repeat the roof with the same camera position'};doc['context']={'discipline':'Lead','grade':'Fictional route','wall_angle':'Overhanging','familiarity':'Practised'}
+            track['coverage']=[{'id':'visible-'+str(i),'start':point(16),'end':point(55),'state':'reviewed'},{'id':'hidden-'+str(i),'start':point(10),'end':point(16),'state':'obscured'}]
+            track['fall_onset']=point(59) if doc['outcome']=='failed' else None
+            track['events']=[dict(id='slip-'+str(i),kind='slip',limb='right',start=point(43.4),end=None,intent='unplanned',status='confirmed',observation='Right foot visibly loses contact',interpretation='Review placement before the next reach',action='Choose the foothold before committing'),dict(id='off-'+str(i),kind='both_off',limb='both',start=point(43.4),end=point(44.2),intent='unplanned',status='confirmed',observation='Both feet visibly off the wall',interpretation='',action='')]
             doc['checkpoints']=[{'id':'rest-point','name':'REST','point':point(33+i),'comment':'Fictional demonstration'}]
             window.workspace.remember(path,doc);docs.append(doc)
         window.workspace.videos.remove(str(video));window.workspace.states.pop(str(video),None);window.video_path=root/'demo-1.mkv';window.history=History(docs[0]);window.saved=copy.deepcopy(docs[0]);window.draw.setValue(9);window.refresh();window.refresh_collection();window.show_frame(350);drain()
@@ -72,9 +78,17 @@ def main():
         window.show_view(window.comparison_page);window.comparison_table.selectRow(0);settle();window.grab().save(str(destination/'athlete-comparison.png'))
         window.show_view(window.comparison_charts);window.compare_scope.point.setCurrentText('REST');settle();window.grab().save(str(destination/'comparison-charts.png'))
         window.show_view(window.measure_page);window.resize(1024,768);settle();window.grab().save(str(destination/'workspace-laptop.png'))
-        window.toggle_inspector();settle();window.grab().save(str(destination/'workspace-focus.png'))
+        window.footwork_panel.toggle.setChecked(True);settle();window.measurement_scroll.ensureWidgetVisible(window.footwork_panel.body);settle();window.grab().save(str(destination/'workspace-footwork.png'))
+        window.footwork_panel.toggle.setChecked(False);window.toggle_inspector();settle();window.grab().save(str(destination/'workspace-focus.png'))
+        example=copy.deepcopy(docs[0]);example['start']=point(0);example['end']=point(60);example['outcome']='completed';example['open_events']=[]
+        for e in example['events']:e['notes']=''
+        example['footwork']['fall_onset']=None;example['footwork']['coverage']=[{'id':'review-a','start':point(0),'end':point(10),'state':'reviewed'},{'id':'hidden','start':point(10),'end':point(16),'state':'obscured'},{'id':'review-b','start':point(16),'end':point(60),'state':'reviewed'}]
+        event=example['footwork']['events'][0];example['footwork']['events'] += [dict(event,id='left-slip',limb='left',start=point(18.2),observation='Left foot visibly loses contact'),dict(event,id='uncertain-slip',limb='uncertain',start=point(12.3),status='uncertain',intent='uncertain',observation='Foot hidden by the wall',interpretation='',action=''),dict(example['footwork']['events'][1],id='intentional-off',start=point(27),end=point(28.6),intent='intentional',observation='Deliberate dynamic foot release')]
+        target=repository/'artifacts'/'coaching-preview-0.21.0'/'coaching-review.html'
+        export_report([example],target,sources={example['attempt_id']:root/'demo-1.mkv'},media='clips',pdf=True)
+        print('Fictional coaching example:',target)
         window.saved=copy.deepcopy(window.document());window.close()
-    print('Captured eight screenshots using synthetic data only:',destination)
+    print('Captured nine screenshots using synthetic data only:',destination)
     return 0
 
 if __name__=='__main__':raise SystemExit(main())

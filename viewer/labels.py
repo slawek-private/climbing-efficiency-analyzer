@@ -35,6 +35,7 @@ def empty_labels(source):
 
 def validate(document):
     VALIDATOR.validate(document)
+    if any(k in document for k in ("footwork","coaching","context")) and document["schema_version"]!="1.3.0":raise ValueError("Coaching observations require schema 1.3.0")
     source = document["source"]
     base = Fraction(source["time_base"])
     if base <= 0:
@@ -57,7 +58,7 @@ def validate(document):
             raise ValueError("Contact, clip and off-wall events require a hand")
         if event["kind"] == "rest" and event["hand"] != "none" and document["schema_version"] == "1.0.0":
             raise ValueError("Hand-specific rest intervals require label schema 1.1.0")
-        if event["kind"] == "chalk" and document["schema_version"] != "1.2.0":raise ValueError("Chalking requires schema 1.2.0")
+        if event["kind"] == "chalk" and document["schema_version"] not in ("1.2.0","1.3.0"):raise ValueError("Chalking requires schema 1.2.0")
         if "clip_method" in event and event["kind"] != "clip":
             raise ValueError("Clip method applies only to clip events")
         if event["kind"] == "contact" and event["target"] is None:
@@ -69,6 +70,8 @@ def validate(document):
             events=sorted((e for e in document['events'] if e['kind']==kind and e['hand']==hand),key=lambda e:e['start']['seconds'])
             if any(b['start']['seconds']<a['end']['seconds'] for a,b in zip(events,events[1:])):raise ValueError('Overlapping '+hand+' '+kind+' intervals')
     points.extend(e["start"] for e in document["open_events"])
+    from .footwork import validate_track
+    points.extend(validate_track(document))
     for point in points:
         if point["frame"] >= source["frame_count"]:
             raise ValueError("Frame outside source video")
@@ -100,6 +103,10 @@ def save(document, path):
     validate(document)
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists() and document["schema_version"]=="1.3.0":
+        previous=json.loads(path.read_text(encoding="utf-8"))
+        backup=path.with_name(path.stem+".pre-coaching-backup.json")
+        if previous["schema_version"]!="1.3.0" and not backup.exists():backup.write_bytes(path.read_bytes())
     temporary = path.with_suffix(path.suffix + ".tmp")
     temporary.write_text(json.dumps(document, indent=2), encoding="utf-8")
     temporary.replace(path)

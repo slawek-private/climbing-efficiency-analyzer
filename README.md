@@ -57,10 +57,10 @@ installer's SHA-256 and release compatibility manifest (OS, architecture and
 supported source versions). Downloads wait for an explicit restart. Recording
 tips and the guided tour are available from Help, when you want them.
 
-**0.20.1:** collision-safe autosave, recoverable missing videos, separate saved
-attempts, collapsible measuring controls, shared comparison selection, dynamic
-checkpoint/quickdraw charts, and preview queues with disk-space safeguards.
-See [release notes](docs/RELEASE_0.20.1.md).
+**0.21.0:** a calmer native-font workspace with System/Light/Dark appearance,
+manual footwork review with explicit coverage, and goal-led coaching HTML/PDF
+reports with optional local replay clips and stills. CSV/JSON preserve provenance.
+See [release notes](docs/RELEASE_0.21.0.md) and [the coaching guide](docs/COACHING_REVIEW.md).
 
 Mark climb start/end (fall or top), shared points, timestamped comments, and
 left/right rest, clip and chalk timers. Compare multiple athletes, view live

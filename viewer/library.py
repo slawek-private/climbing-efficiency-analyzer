@@ -7,10 +7,10 @@ import av
 from PIL import Image
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout,QGridLayout, QLabel, QPushButton, QTableWidget, QTableWidgetItem,
-                               QAbstractItemView, QHeaderView, QMessageBox,QCheckBox)
+                               QAbstractItemView, QHeaderView, QMessageBox,QCheckBox,QMenu)
 from . import storage
 
-COLUMNS = ['Video', 'Athlete', 'Resolution', 'FPS', 'Codec', 'Duration', 'File size', 'Smooth preview', 'Preview size', 'Notes','Readiness','Action']
+COLUMNS = ['Video', 'Athlete', 'Resolution', 'FPS', 'Codec', 'Duration', 'File size', 'Smooth preview', 'Preview size', 'Notes','Workspace','Action']
 HDR_TRANSFERS = {16, 18}  # SMPTE ST 2084 (PQ) and ARIB STD-B67 (HLG)
 
 
@@ -95,8 +95,10 @@ class LibraryTab(QWidget):
         layout = QVBoxLayout(self);layout.setContentsMargins(14, 12, 14, 10);layout.setSpacing(8)
         intro = QLabel('Every video in this project with its recording settings. Prepare smooth previews in bulk and leave it running: '
                        'videos are processed one after another in the background while you keep working. Originals are never modified.')
+        self.heading=QLabel();self.heading.setObjectName('section');layout.addWidget(self.heading)
+        self.open_now=QLabel();self.open_now.setObjectName('muted');self.open_now.setWordWrap(True);layout.addWidget(self.open_now)
         intro.setWordWrap(True);intro.setObjectName('muted');layout.addWidget(intro)
-        bar = QGridLayout();self.buttons = {}
+        bar = QHBoxLayout();self.buttons = {};self.more_actions={};more=QPushButton("More ▾");more_menu=QMenu(more);more.setMenu(more_menu)
         for key, text, callback, tip in [
             ('add', 'Add videos…', window.open_video, 'Add video files to this project.'),
             ('recommended', 'Prepare all recommended', lambda:self.prepare(recommended=True), 'Queue every video marked Recommended that has no smooth preview yet.'),
@@ -104,8 +106,11 @@ class LibraryTab(QWidget):
             ('cancel', 'Cancel queue', self.cancel, 'Stop after discarding the preview currently being prepared.'),
             ('remove', 'Remove from project', self.remove, 'Remove the selected videos from this project. Video files and saved measurements are kept.'),
             ('storage', 'Storage…', window.show_storage, 'See and limit disk space used by previews and frame indexes.')]:
-            b = QPushButton(text);b.setToolTip(tip);b.clicked.connect(callback);bar.addWidget(b,len(self.buttons)//3,len(self.buttons)%3);self.buttons[key] = b
-        self.buttons['recommended'].setProperty('role', 'primary');self.buttons['cancel'].setEnabled(False);bar.setColumnStretch(3,1);layout.addLayout(bar)
+            b = QPushButton(text);b.setToolTip(tip);b.clicked.connect(callback);self.buttons[key] = b
+            if key in ("add","selected","cancel"):bar.addWidget(b)
+            else:
+                b.hide();action=more_menu.addAction(text);action.setToolTip(tip);action.triggered.connect(callback);self.more_actions[key]=action
+        self.buttons['selected'].setProperty('role', 'primary');self.buttons['cancel'].setEnabled(False);bar.addStretch();bar.addWidget(more);layout.addLayout(bar)
         self.table = QTableWidget(0, len(COLUMNS));self.table.setHorizontalHeaderLabels(COLUMNS);self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows);self.table.setAlternatingRowColors(True);self.table.setShowGrid(False);self.table.verticalHeader().hide()
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents);self.table.horizontalHeader().setStretchLastSection(False);self.table.horizontalHeader().setSectionResizeMode(0,QHeaderView.ResizeMode.Stretch);self.table.horizontalHeader().moveSection(10,1);self.table.horizontalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignLeft|Qt.AlignmentFlag.AlignVCenter)
@@ -114,6 +119,9 @@ class LibraryTab(QWidget):
         self.summary = QLabel();self.summary.setObjectName('muted');self.summary.setWordWrap(True);layout.addWidget(self.summary)
     def show_details(self,show):
         for column in (1,2,3,4,5,6,9):self.table.setColumnHidden(column,not show)
+    def update_heading(self):
+        current=self.window.video_path;self.heading.setText(f'{self.window.project.name} · {len(self.paths())} videos')
+        self.open_now.setText('Open now: '+current.name+' · choose another video below' if current else 'Choose a video below to open it in Measure.')
     def paths(self):return list(self.window.workspace.videos)
     def activate(self):
         self.render()
@@ -130,7 +138,7 @@ class LibraryTab(QWidget):
     def preview_ready(self, meta):
         return bool(meta.get('sha256')) and (storage.folders(self.window.data_root())[0]/meta['sha256']/'manifest.json').exists()
     def render(self):
-        paths = self.paths();self.table.setRowCount(len(paths));states = self.window.workspace.states;wanted = 0;candidates = low_fps = low_res = hdr = 0
+        self.update_heading();paths = self.paths();self.table.setRowCount(len(paths));states = self.window.workspace.states;wanted = 0;candidates = low_fps = low_res = hdr = 0
         for row, path in enumerate(paths):
             m = self.meta.get(path, {});state = states.get(path)
             if not Path(path).is_file():values=[Path(path).name]+['']*6+['Missing — double-click to locate']+['']*2
@@ -144,24 +152,28 @@ class LibraryTab(QWidget):
                 candidates += (not ready and advice == 'Recommended')
                 low_fps += bool(m['fps'] and m['fps'] < 49);low_res += min(m['width'], m['height']) < 1080;hdr += bool(m['hdr'])
             else:values = [Path(path).name]+['']*6+[self.status.get(path, 'Waiting')]+['']*2
-            missing=not Path(path).is_file();readiness='Missing source' if missing else 'Cannot read' if 'error' in m else 'Can measure' if m else 'Reading metadata'
+            current=bool(self.window.video_path and path==str(self.window.video_path.resolve()));missing=not Path(path).is_file();readiness='Open now' if current else 'Missing source' if missing else 'Cannot read' if 'error' in m else 'Can measure' if m else 'Reading metadata'
             values += [readiness,'']
             for col, value in enumerate(values):
                 item = QTableWidgetItem(str(value))
+                if current and col in (0,10):font=item.font();font.setBold(True);item.setFont(font)
                 if col == 9 and value:item.setToolTip('Milliseconds/frame is nominal spacing, not an error bound; actual timestamps can vary. <1080p: small hands and quickdraws. HDR: colours may look flat.')
                 if col == 7:item.setToolTip({'Ready': 'Smooth preview prepared: scrubbing and stepping use it automatically.', 'Recommended': '4K or HEVC: scrubbing the original is slow. Prepare a smooth preview.', 'Optional': 'Usually smooth enough without a preview.'}.get(value, ''))
                 self.table.setItem(row, col, item)
-            action=QPushButton('Locate…' if missing else 'Open' if self.preview_ready(m) or not m or 'error' in m else 'Prepare…')
-            action.clicked.connect(lambda checked=False,r=row,open_video=missing or self.preview_ready(m) or not m or 'error' in m:self.row_action(r,open_video));self.table.setCellWidget(row,11,action)
+            action=self.table.cellWidget(row,11)
+            if action is None:
+                action=QPushButton();action.clicked.connect(lambda checked=False,b=action:self.row_action(b.property('videoRow'),True));self.table.setCellWidget(row,11,action)
+            action.setProperty('videoRow',row);action.setText('Locate…' if missing else 'Return to video' if current else 'Open')
         root = self.window.data_root();cache = sum(r['preview_bytes']+r['index_bytes'] for r in storage.entries(root));limit = float(self.window.settings.value('cache_limit_gb', storage.DEFAULT_LIMIT_GB))
         free = shutil.disk_usage(root if root.exists() else Path.home()).free
-        flags = [f'{n} {what}' for n, what in ((low_fps, 'under 50 fps (marks less precise)'), (low_res, 'below 1080p'), (hdr, 'HDR')) if n]
+        flags = [f'{n} {what}' for n, what in ((low_fps, 'under 50 fps (wider frame spacing)'), (low_res, 'below 1080p'), (hdr, 'HDR')) if n]
         self.summary.setText(f'{len(paths)} videos'+(' · '+', '.join(flags) if flags else '')+f' · cache {storage.human(cache)} of {limit:g} GB · {storage.human(free)} free'
                              +(f' · recommended previews to prepare: ~{storage.human(wanted)}' if wanted else ''))
         running = bool(self.bulk and self.bulk.isRunning());self.buttons['cancel'].setEnabled(running)
         for key in ('selected', 'remove'):self.buttons[key].setEnabled(not running)
         self.buttons['recommended'].setEnabled(not running and candidates > 0)
         self.buttons['recommended'].setText(f'Prepare {candidates} recommended' if candidates else 'Nothing to prepare')
+        for key,action in self.more_actions.items():action.setEnabled(self.buttons[key].isEnabled());action.setText(self.buttons[key].text())
     def row_action(self,row,open_video):
         if open_video:self.open_row(row,0)
         else:self.table.clearSelection();self.table.selectRow(row);self.prepare(False)
@@ -206,7 +218,7 @@ class LibraryTab(QWidget):
         self.window.workspace.attempts=[e for e in self.window.workspace.attempts if e['path'] not in chosen]
         self.window.workspace.save();self.window.refresh_collection();self.render()
     def open_row(self, row, col):
-        self.window.select_video(row);self.window.main_tabs.setCurrentIndex(0)
+        self.window.select_video(row);self.window.main_tabs.setCurrentIndex(0);self.render()
     def shutdown(self):
         for worker in (self.meta_worker, self.bulk):
             if worker and worker.isRunning():worker.requestInterruption();worker.wait()

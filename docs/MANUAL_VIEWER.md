@@ -175,3 +175,21 @@ The window follows the job: measure one climb, compare climbs, manage videos.
 ## 0.20.0 · recoverable measurements and contextual comparison
 
 The current behavior supersedes earlier version entries above. See [0.20.0 release notes](RELEASE_0.20.0.md) for saved attempts, missing-video recovery, shared comparison selection, the collapsed inspector, preview queues and compatibility-gated updates. Clip method is captured when starting each timer, not when stopping it. Exports use the selected comparison. Choose Help → Show tour when ready; it does not open automatically.
+
+## Footwork and coaching review (0.21.0)
+
+Expand **Footwork** in the inspector to mark slips, intentional releases and
+both-feet-off intervals, review visible/obscured coverage and mark fall onset.
+**Coaching goal and context** stores the session goal and agreed next action.
+Use **Export → Coaching review** for local interactive HTML, CSV/JSON and PDF,
+with footage excluded by default. [The coaching guide](COACHING_REVIEW.md)
+defines every measurement and explains optional portable replay sections.
+**View → Appearance** follows the system by default and offers Light, Dark and
+increased contrast.
+
+Opening a project takes you to **Library**, with its video count and the currently
+open video marked. Choose **Open** to measure a video; **Prepare selected** is a
+separate optional background task. In Measure, numbered video buttons show the
+project's videos and highlight the current one. **Videos · N** returns to the
+Library; the header shows **Open now** and **Viewing X/N**. Arrow through a long
+video strip with its horizontal scrollbar. Ctrl+[ / Ctrl+] still switch videos.

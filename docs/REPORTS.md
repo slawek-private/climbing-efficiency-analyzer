@@ -47,3 +47,14 @@ ignored private directories. Do not upload them to CI or commit them.
 ## PDF output
 
 Add `--pdf artifacts/reports/comparison.pdf` to either command. PDF generation uses ReportLab locally: vector charts, repeated table headers, page numbers, focus comparisons, recovery percentages and full event tables. PDF files and their telemetry stay outside Git.
+
+## Coaching reports (0.21.0)
+
+**Export → Coaching review** generates a goal-led HTML report from current or
+selected attempts with optional local replay sections and stills, printable PDF,
+event/summary CSV and full JSON attempt snapshots. Footage is excluded by default.
+Coverage and fall onset determine which reviewed footwork metrics are available.
+The existing comparison CLI above retains its timing-focused layout. For the new
+coaching layout use `python -m viewer.coaching_report`; see the
+[coaching guide](COACHING_REVIEW.md) for commands, media scope, compatibility and
+precise measurement definitions.

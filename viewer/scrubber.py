@@ -9,10 +9,11 @@ class PrecisionScrubber(QWidget):
     seek=Signal(float)
     released=Signal()
     zoomChanged=Signal(float)
+    observationSelected=Signal(str)
     def __init__(self):
         super().__init__();self.setMinimumHeight(92);self.setMaximumHeight(92)
         self.duration=1.;self.position=0.;self.document=None;self.dark=False
-        self.span=0.;self.center=0.;self.dragging=False;self.panning=False
+        self.span=0.;self.center=0.;self.dragging=False;self.panning=False;self.foot_hits=[]
         self.setMouseTracking(True)
         self.setToolTip('Pinch to zoom · two-finger scroll to pan · double-tap for full video · wheel to zoom')
     def bounds(self):
@@ -23,6 +24,8 @@ class PrecisionScrubber(QWidget):
         self.span=max(0.,float(seconds));self.center=self.position;self.update();self.zoomChanged.emit(self.span)
     def sync(self,duration,position,document):
         if abs(duration-self.duration)>.001:self.center=position
+        height=118 if document and document.get("footwork") else 92
+        self.setMinimumHeight(height);self.setMaximumHeight(height)
         self.duration=max(.001,duration);self.position=position;self.document=document
         a,b=self.bounds()
         if not self.dragging and not self.panning and not a<=position<=b:self.center=position
@@ -36,7 +39,7 @@ class PrecisionScrubber(QWidget):
         minutes=int(seconds//60);return f'{minutes:02d}:{seconds-minutes*60:06.3f}'
     def paintEvent(self,event):
         p=QPainter(self);p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        bg='#172438' if self.dark else '#f0f4fa';text='#b8c7de' if self.dark else '#52647c'
+        bg='#202326' if self.dark else '#f4f5f6';text='#b2b8bf' if self.dark else '#59616b'
         p.fillRect(self.rect(),QColor(bg));a,b=self.bounds();span=b-a
         # Select a readable ruler interval, including subsecond ticks when zoomed.
         desired=span/max(2,self.width()/90)
@@ -50,8 +53,9 @@ class PrecisionScrubber(QWidget):
                 minor=t+j*step/5
                 if minor<b:p.drawLine(int(self.x_at(minor)),36,int(self.x_at(minor)),43)
             t+=step
-        p.fillRect(12,46,max(1,self.width()-24),25,QColor('#263b57' if self.dark else '#dce5f1'))
-        d=self.document
+        p.fillRect(12,46,max(1,self.width()-24),25,QColor('#383e45' if self.dark else '#e5e7eb'))
+        d=self.document;self.foot_hits=[]
+        p.setPen(QColor(text));p.drawText(12,86,'Hands · clip / rest / chalk')
         if d:
             for e in d['events']:
                 x=max(a,e['start']['seconds']);end=min(b,e['end']['seconds'])
@@ -59,13 +63,32 @@ class PrecisionScrubber(QWidget):
                 color={'clip':'#4386f5','rest':'#20ab85','chalk':'#ab7ce7'}.get(e['kind'],'#90a3ba')
                 row={'clip':0,'rest':1,'chalk':2}.get(e['kind'],0)
                 p.fillRect(int(self.x_at(x)),47+row*8,max(2,int((end-x)/span*(self.width()-24))),7,QColor(color))
+            track=d.get('footwork')
+            if track:
+                p.setPen(QColor(text));p.drawText(12,113,'Feet · reviewed / obscured / off / slip')
+                p.fillRect(12,89,max(1,self.width()-24),12,QColor('#383e45' if self.dark else '#e5e7eb'))
+                for c in track['coverage']:
+                    x,end=max(a,c['start']['seconds']),min(b,c['end']['seconds'])
+                    if end<=x:continue
+                    rect=QRectF(self.x_at(x),89,max(2,(end-x)/span*(self.width()-24)),12)
+                    p.fillRect(rect,QColor('#117451' if c['state']=='reviewed' else '#727c87'))
+                    if c['state']=='obscured':
+                        p.save();p.setClipRect(rect);p.setPen(QColor('#e5e7eb'))
+                        for xx in range(int(rect.left())-12,int(rect.right())+12,8):p.drawLine(xx,89,xx+12,101)
+                        p.restore()
+                for e in track['events']:
+                    x,end=max(a,e['start']['seconds']),min(b,(e.get('end') or e['start'])['seconds'])
+                    if e['end'] and end<=x or not e['end'] and not a<=e['start']['seconds']<=b:continue
+                    rect=QRectF(self.x_at(x)-3,87,max(6,(end-x)/span*(self.width()-24)),16)
+                    color='#a16b09' if e['intent']=='intentional' else '#df664e'
+                    p.setPen(QPen(QColor(color),2));p.setBrush(QColor(color) if e['status']=='confirmed' else Qt.BrushStyle.NoBrush);p.drawRect(rect);self.foot_hits.append((rect,e))
             for marker in d.get('checkpoints',[]):
                 t=marker['point']['seconds']
                 if a<=t<=b:
                     x=int(self.x_at(t));p.setPen(QPen(QColor('#e3a83a'),2));p.drawLine(x,42,x,73)
             for key,word in (('start','START'),('end','END')):
                 if d[key] and a<=d[key]['seconds']<=b:
-                    x=int(self.x_at(d[key]['seconds']));p.setPen(QColor(('#e8edf4' if self.dark else '#141a24') if key=='start' else '#ec6966'));p.drawLine(x,29,x,73);p.drawText(x+3,86,word)
+                    x=int(self.x_at(d[key]['seconds']));p.setPen(QColor(('#e8edf4' if self.dark else '#141a24') if key=='start' else '#ec6966'));p.drawLine(x,29,x,73);p.drawText(x+3,42,word)
         if a<=self.position<=b:
             x=int(self.x_at(self.position));p.setPen(QPen(QColor('#ed6964'),2));p.drawLine(x,26,x,74)
             p.setBrush(QColor('#ed6964'));p.drawEllipse(QRectF(x-4,25,8,8))
@@ -73,12 +96,18 @@ class PrecisionScrubber(QWidget):
         if event.button()==Qt.MouseButton.RightButton:
             self.panning=True;self.pan_x=event.position().x();self.pan_center=sum(self.bounds())/2;return
         if event.button()==Qt.MouseButton.LeftButton:
+            for rect,observation in self.foot_hits:
+                if rect.contains(event.position()):self.observationSelected.emit(observation["id"])
             self.dragging=True;self.seek.emit(self.seconds_at(event.position().x()))
     def mouseMoveEvent(self,event):
         if self.panning:
             a,b=self.bounds();self.center=max(0.,min(self.duration,self.pan_center-(event.position().x()-self.pan_x)/(max(1,self.width()-24))*(b-a)));self.update()
         elif self.dragging:self.seek.emit(self.seconds_at(event.position().x()))
-        else:QToolTip.showText(event.globalPosition().toPoint(),self.time_text(self.seconds_at(event.position().x())),self)
+        else:
+            selected=next((e for r,e in self.foot_hits if r.contains(event.position())),None)
+            tip=self.time_text(self.seconds_at(event.position().x()))
+            if selected:tip+=' · '+selected['kind'].replace('_',' ')+' · '+selected['intent']+' · '+selected['status']
+            QToolTip.showText(event.globalPosition().toPoint(),tip,self)
     def mouseReleaseEvent(self,event):
         if self.dragging:
             self.seek.emit(self.seconds_at(event.position().x()));self.dragging=False;self.released.emit()

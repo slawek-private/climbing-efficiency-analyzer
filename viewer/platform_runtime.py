@@ -5,6 +5,10 @@ import sys
 import tempfile
 from pathlib import Path
 
+def interface_font():
+    from PySide6.QtGui import QFont,QFontDatabase
+    return QFont('Segoe UI') if sys.platform=='win32' else QFontDatabase.systemFont(QFontDatabase.SystemFont.GeneralFont)
+
 def timecode_font():
     from PySide6.QtGui import QFont,QFontDatabase
     return QFont('Consolas') if sys.platform=='win32' else QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
