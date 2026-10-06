@@ -106,6 +106,8 @@ def test_route_selection_and_laptop_layout(tmp_path,monkeypatch):
     w.compare_scope.route.setCurrentText('Other route');assert len(w.comparison_documents)==1 and w.comparison_documents[0]['climber']=='Other'
     w.show_view(w.measure_page)
     from PySide6.QtTest import QTest
+    from PySide6.QtGui import QFontDatabase
+    assert QFontDatabase.families(), 'Layout tests require actual fonts (Windows offscreen needs QT_QPA_FONTDIR).'
     QTest.qWait(50);w.resize(1024,768);app.processEvents()
     names=('measure_page','transport','measurement_scroll','position','preview_button','image','active_timers','speed','timeline_zoom')
     assert w.width()==1024, '\n'.join(f'{name}: minimum={getattr(w,name).minimumSizeHint().width()}, width={getattr(w,name).width()}, font={getattr(w,name).font().toString()}' for name in names)

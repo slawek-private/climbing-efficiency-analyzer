@@ -16,6 +16,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       QT_QPA_PLATFORM: offscreen
+      # Windows offscreen uses FreeType and needs an explicit system font folder.
+      QT_QPA_FONTDIR: ${{ matrix.os == 'windows-latest' && 'C:/Windows/Fonts' || '' }}
       PYTHONUTF8: '1'
       UV_NO_PROGRESS: '1'
     steps:

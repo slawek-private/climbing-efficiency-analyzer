@@ -5,11 +5,11 @@ monochrome so colour stays reserved for the data (clip blue, rest green, chalk p
 amber, climb end red); every fact drawn once.
 """
 from PySide6.QtCore import Qt,QRect
-from PySide6.QtGui import QColor,QPainter,QFontDatabase,QAction,QKeySequence
+from PySide6.QtGui import QColor,QPainter,QAction,QKeySequence
 from PySide6.QtWidgets import (QWidget,QVBoxLayout,QHBoxLayout,QGridLayout,QLabel,QPushButton,QFrame,QTabWidget,QSplitter,QScrollArea,QHeaderView,
     QAbstractItemView,QComboBox,QTableWidget,QSpinBox,QMessageBox,QMenu,QDialog,QFormLayout,QCheckBox,QDialogButtonBox,QStyledItemDelegate,QStyle,QSizePolicy)
 from .version import APP_NAME,__version__
-from .platform_runtime import GPU_LABEL,configure_window_font,timecode_font
+from .platform_runtime import GPU_LABEL,timecode_font
 
 STYLE='''
 QWidget { font-size: 13px; color: #25334a; }
@@ -158,7 +158,6 @@ class SettingsDialog(QDialog):
         close=QDialogButtonBox(QDialogButtonBox.StandardButton.Close);close.rejected.connect(self.reject);form.addRow(close)
 
 def build(w):
-    configure_window_font(w)
     # Retain inherited editor fields and callbacks while moving visible controls.
     old=w.takeCentralWidget();old.setParent(w);old.hide();w.legacy_widget=old
     root=QWidget();root.setObjectName('workspace');outer=QVBoxLayout(root);outer.setContentsMargins(14,10,14,4);outer.setSpacing(8);w.setCentralWidget(root)
