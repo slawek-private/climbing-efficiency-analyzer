@@ -9,6 +9,8 @@ from .labels import validate
 from .footwork import metrics,observations
 from .version import __version__
 
+from .reporting import OVERVIEW_CSS,overview_html,records as overview_records,footwork_timeline,pdf_overview,details_html
+
 CSS='''
 :root{color-scheme:light dark;--bg:#f4f5f6;--panel:#fff;--ink:#20252b;--muted:#59616b;--line:#8b939d;--soft:#e5e7eb;--accent:#245fc4}
 @media(prefers-color-scheme:dark){:root{--bg:#151719;--panel:#202326;--ink:#f3f4f5;--muted:#b2b8bf;--line:#727c87;--soft:#383e45;--accent:#78adff}}
@@ -16,12 +18,20 @@ CSS='''
 @media(max-width:650px){main{padding:16px}section{padding:18px}.stats{grid-template-columns:1fr}h1{font-size:28px}.player{position:static}}
 @media print{:root{color-scheme:light;--bg:white;--panel:white;--ink:#20252b;--muted:#59616b;--line:#8b939d;--soft:#d6d8d9}body{font-size:11pt}main{padding:0;max-width:none}button,video,.player{display:none!important}.print-note{display:block}section{padding:12px 0;break-before:page}header+section{break-before:auto}.evidence{break-inside:avoid}thead{display:table-header-group}h2,h3{break-after:avoid}.scroll{overflow:visible}details>div{display:block!important}}
 '''
+CSS+=OVERVIEW_CSS
+
 SCRIPT='''
-let printedDetails=[];window.addEventListener('beforeprint',()=>{printedDetails=[...document.querySelectorAll('details')].map(d=>[d,d.open]);printedDetails.forEach(([d])=>d.open=true);});window.addEventListener('afterprint',()=>printedDetails.forEach(([d,open])=>d.open=open));
 const data=JSON.parse(document.getElementById('reportData').textContent),player=document.getElementById('player'),video=document.getElementById('video'),status=document.getElementById('playStatus');let bounds=null;
 function playEvent(key,context){const e=data[key],m=e.media;if(!m){status.textContent='No video included for this observation.';return;}player.hidden=false;document.getElementById('playTitle').textContent=e.label+' · original frame '+e.frame;status.textContent=m.kind==='link'?'Original video link; it must remain at its exported location.':'Portable review clip; measurements retain original frame and PTS identity.';const start=Math.max(0,e.start-m.offset-(context?2:0)),end=e.end-m.offset+(context?2:0);bounds=[start,Math.max(start+.1,end)];const run=()=>{if(Number.isFinite(video.duration))bounds[1]=Math.min(bounds[1],video.duration);video.currentTime=Math.min(start,video.duration||start);video.play().catch(()=>status.textContent='Use Play. If this video format cannot play here, export portable H.264 sections.');};if(video.dataset.key!==key){video.dataset.key=key;video.src=m.url;video.load();video.onloadedmetadata=run;}else run();player.scrollIntoView({block:'start',behavior:'smooth'});}
 video.addEventListener('timeupdate',()=>{if(bounds&&!video.paused&&video.currentTime>=bounds[1])video.currentTime=bounds[0];});video.addEventListener('ended',()=>{if(bounds){video.currentTime=bounds[0];video.play().catch(()=>{});}});video.addEventListener('error',()=>status.textContent='Video unavailable. Original links work only on this computer and depend on browser codec support. Export portable sections for sharing.');document.getElementById('closePlayer').onclick=()=>{video.pause();bounds=null;player.hidden=true;};document.querySelectorAll('[data-replay]').forEach(b=>b.onclick=()=>playEvent(b.dataset.replay,b.dataset.context==='true'));
 '''
+
+def review_metrics(document):
+    result=metrics(document)
+    if not document.get('footwork'):
+        result.update(reviewed_seconds=None,coverage_share=None,candidate_slips=None,fall_review_needed=False)
+    return result
+
 
 def display(value,unit=''):
     return 'Not reviewed' if value is None else f'{value:.1f}{unit}' if isinstance(value,float) else str(value)+unit
@@ -81,7 +91,7 @@ def export_report(documents,path,*,sources=None,media='none',include_hands=False
         stage=Path(temp);assets=stage/media_folder;assets.mkdir();counter=0
         for n,d in enumerate(documents):
             if cancelled():raise InterruptedError('Report export cancelled')
-            name=f'Athlete {n+1}' if anonymous else d['climber'];label=name+' · attempt '+d['attempt'];m=metrics(d);events=observations(d);coach=d.get('coaching',{});context=d.get('context',{});media_map={};reader=None
+            name=f'Athlete {n+1}' if anonymous else d['climber'];label=name+' · attempt '+d['attempt'];m=review_metrics(d);events=observations(d);coach=d.get('coaching',{});context=d.get('context',{});media_map={};reader=None
             identity=d.get('attempt_id') or d['source']['sha256'];source=sources.get(identity) or sources.get(d['source']['sha256'])
             selected=[e for e in events if include_hands or e['kind'] in ('slip','both_off','foot_release') or e.get('observation') or e.get('interpretation')]
             if media!='none' and selected:
@@ -114,9 +124,8 @@ def export_report(documents,path,*,sources=None,media='none',include_hands=False
                             poster=filename.replace('.mp4','.png');Image.fromarray(reader.frame(e['start']['frame'])).save(assets/poster);entry['poster']=quote(media_folder+'/'+poster);stills.setdefault(identity,{})[e['id']]=assets/poster;media_map[e['id']]=entry
                 finally:
                     if reader:reader.close()
-            goal=coach.get('goal') or 'No session goal recorded';facts=[('Confirmed foot slips',display(m['confirmed_slips']),f"{m['candidate_slips']} candidates / uncertain observations"),('Unplanned both-feet-off',display(m['unplanned_seconds'],' s'),'Intentional '+display(m['intentional_seconds'],' s')+' shown separately'),('Footwork coverage',display(m['coverage_share']*100 if m['coverage_share'] is not None else None,'%'),display(m['reviewed_seconds'],' s')+' visible and reviewed')]
-            body='<h2>'+escape(label)+'</h2><p class="muted">'+escape(d['route']+' · '+d['outcome']+' · '+' · '.join(v for v in context.values() if v))+'</p><p class="goal">'+escape(goal)+'</p><div class="stats">'+''.join('<div><strong>'+escape(value)+'</strong><span>'+escape(title)+'</span><br><small>'+escape(note)+'</small></div>' for title,value,note in facts)+'</div>'
-            if m['coverage_share'] is not None:body+=f'<div class="coverage" aria-label="{m["coverage_share"]:.0%} reviewed coverage"><span style="width:{100*m["coverage_share"]:.3f}%"></span></div>'
+            goal=coach.get('goal') or 'No session goal recorded'
+            body='<h2>'+escape(label)+'</h2><p class="muted">'+escape(d['route']+' · '+d['outcome']+' · '+' · '.join(v for v in context.values() if v))+'</p><p class="goal">'+escape(goal)+'</p>'
             if m['pending']:body+='<p><strong>Unfinished feet-off timer:</strong> totals stay unknown until it is closed and reviewed.</p>'
             if m['fall_review_needed']:body+='<p><strong>Fall start not marked:</strong> footwork totals remain unknown because time in the air after the fall cannot yet be excluded.</p>'
             body+='<p class="muted">Both feet off: '+escape(display(m['both_off_seconds'],' s'))+' / '+escape(display(m['reviewed_seconds'],' s'))+' = '+escape(display(m['both_off_share']*100 if m['both_off_share'] is not None else None,'%'))+' of observable reviewed time. This is a description, not a quality rating. Occluded and unreviewed footage is excluded.</p>'
@@ -135,12 +144,13 @@ def export_report(documents,path,*,sources=None,media='none',include_hands=False
                 records.append({'athlete':name,'attempt':d['attempt'],'route':d['route'],'event_id':e['id'],'kind':e['kind'],'limb':e['limb'],'intent':e['intent'],'review_state':e['status'],'start_frame':point['frame'],'start_pts':point['pts'],'start_seconds':point['seconds'],'end_frame':end['frame'] if e['end'] else None,'end_pts':end['pts'] if e['end'] else None,'end_seconds':end['seconds'] if e['end'] else None,'source_sha256':d['source']['sha256'],'observation':e.get('observation',''),'interpretation':e.get('interpretation',''),'action':e.get('action','')})
             if cards:body+='<h3>Review these moments first</h3>'+''.join(cards[events.index(e)] for e in highlighted)
             for field,title in [('reflection','Athlete reflection'),('action','Agreed next action'),('retest','Next-session check')]:body+='<h3>'+title+'</h3><p class="notes">'+escape(coach.get(field) or 'Not recorded')+'</p>'
-            body+='<details><summary>Full evidence index and timing appendix</summary><div>'+table(['Observation','Limb','Intent','Review','Video s','Frame','PTS','Length s'],event_rows)+''.join(cards)+'</div></details>'
+            body+='<details><summary>Full evidence index and timing appendix</summary><div>'+table(['Observation','Limb','Intent','Review','Video s','Frame','PTS','Length s'],event_rows)+footwork_timeline(d)+''.join(cards)+'</div></details>'
             body+='<details><summary>Coverage and provenance</summary><div>'+table(['Coverage','Start frame','End frame','Start s','End s'],[[c['state'],c['start']['frame'],c['end']['frame'],c['start']['seconds'],c['end']['seconds']] for c in d.get('footwork',{}).get('coverage',[])])+f'<p class="muted">Source SHA256 <code>{d["source"]["sha256"]}</code><br>Time base {escape(d["source"]["time_base"])} · first PTS {d["source"]["first_pts"]} · schema {escape(d["schema_version"])} · definition 1.0.0 · app {escape(__version__)}<br>Unfinished hand timers: {len(d["open_events"])}; unfinished foot interval: {bool(d.get("footwork",{}).get("pending"))}. These are excluded.</p></div></details>'
-            parts.append('<section>'+body+'</section>');summaries.append(dict(athlete=name,attempt=d['attempt'],route=d['route'],**m))
-        comparison=section_comparison(documents,anonymous)
-        if comparison:parts.append('<section><h2>Matched checkpoints · reference is the first selected attempt</h2><p>Arrival times are relative to each climb start. Differences describe timing, not climbing ability; repeated or missing arrivals remain unknown. Compare camera coverage and route context before interpreting a difference.</p>'+table(['Athlete','Attempt','Checkpoint','Arrival','Reference','Difference','State'],comparison)+'</section>')
-        report_data=json.dumps(payload,ensure_ascii=True).replace('<','\\u003c');html='<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Climb Studio · Coaching review</title><style>'+CSS+'</style></head><body><main><header><p class="muted">Climb Studio · Local coaching review</p><h1>Observe the moment. Agree the next step.</h1><p>Human-marked observations with explicit review states and coach interpretations. Video timing does not measure force, fatigue, energy expenditure or the cause of a fall.</p><p class="print-note">Video replay is available in the interactive HTML. This printed copy retains original frame numbers and timestamps.</p></header><section id="player" class="player" hidden><div class="actions"><strong id="playTitle"></strong><button id="closePlayer">Close replay</button></div><video id="video" controls playsinline preload="metadata"></video><p id="playStatus" class="muted" aria-live="polite"></p></section>'+''.join(parts)+'<footer><p class="muted">No network assets or uploads. Media mode: '+media+'. Share accompanying media folders with this HTML when using portable sections. Original-video links depend on this computer and browser codec support. Replay pixels may be compressed; source frame and PTS identity remain in the measurements.</p></footer></main><script id="reportData" type="application/json">'+report_data+'</script><script>'+SCRIPT+'</script></body></html>'
+            parts.append('<section data-evidence-key="'+str(n)+'">'+body+'</section>');summaries.append(dict(athlete=name,attempt=d['attempt'],route=d['route'],**m))
+        display_documents=[dict(d,climber=f'Athlete {i+1}' if anonymous else d['climber']) for i,d in enumerate(documents)]
+        parts.append('<details><summary>Detailed checkpoint, clipping and split timings · export snapshot</summary>'+details_html(display_documents)+'</details>')
+        overview=overview_html(overview_records(display_documents))
+        report_data=json.dumps(payload,ensure_ascii=True).replace('<','\\u003c');html='<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Climb Studio · Coaching review</title><style>'+CSS+'</style></head><body><main><header><p class="muted">Climb Studio · Local coaching review</p><h1>Coaching review</h1><p>Human-marked observations with explicit review states and coach interpretations. Video timing does not measure force, fatigue, energy expenditure or the cause of a fall.</p><p class="print-note">Video replay is available in the interactive HTML. This printed copy retains original frame numbers and timestamps.</p></header><section id="player" class="player" hidden><div class="actions"><strong id="playTitle"></strong><button id="closePlayer">Close replay</button></div><video id="video" controls playsinline preload="metadata"></video><p id="playStatus" class="muted" aria-live="polite"></p></section>'+overview+''.join(parts)+'<footer><p class="muted">No network assets or uploads. Media mode: '+media+'. Share accompanying media folders with this HTML when using portable sections. Original-video links depend on this computer and browser codec support. Replay pixels may be compressed; source frame and PTS identity remain in the measurements.</p></footer></main><script id="reportData" type="application/json">'+report_data+'</script><script>'+SCRIPT+'</script></body></html>'
         (stage/path.name).write_text(html,encoding='utf-8')
         (stage/(path.stem+'.json')).write_text(json.dumps({'app_version':__version__,'definition_version':'1.0.0','media_mode':media,'summaries':summaries,'events':records,'attempts':[dict(d,climber=f'Athlete {i+1}' if anonymous else d['climber']) for i,d in enumerate(documents)],'replay':payload},indent=2),encoding='utf-8')
         for suffix,rows in [('events',records),('summary',summaries)]:
@@ -171,27 +181,20 @@ def export_pdf(documents,path,anonymous=False,stills=None):
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import getSampleStyleSheet,ParagraphStyle
     from reportlab.platypus import SimpleDocTemplate,Paragraph,Spacer,LongTable,PageBreak,Image,KeepTogether
-    import reportlab
-    from reportlab.pdfbase import pdfmetrics
-    from reportlab.pdfbase.ttfonts import TTFont
-    fonts=Path(reportlab.__file__).parent/'fonts'
-    for name,file in [('Review','Vera.ttf'),('ReviewBold','VeraBd.ttf'),('ReviewItalic','VeraIt.ttf'),('ReviewBoldItalic','VeraBI.ttf')]:
-        if name not in pdfmetrics.getRegisteredFontNames():pdfmetrics.registerFont(TTFont(name,str(fonts/file)))
-    pdfmetrics.registerFontFamily('Review',normal='Review',bold='ReviewBold',italic='ReviewItalic',boldItalic='ReviewBoldItalic')
-    styles=getSampleStyleSheet()
-    for style in styles.byName.values():
-        if hasattr(style,'fontName'):style.fontName='ReviewBold' if style.fontName.endswith('Bold') else 'Review'
+    from .reporting import pdf_fonts,pdf_footwork_timeline
+    styles=getSampleStyleSheet();pdf_fonts(styles)
     styles.add(ParagraphStyle(name='Cell',fontName='Review',fontSize=8,leading=11));story=[];width=A4[0]-80
     def para(value,style='BodyText'):return Paragraph(escape(str(value)).replace('\n','<br/>'),styles[style])
     def add(value,style='BodyText'):story.extend((para(value,style),Spacer(1,10)))
     def grid(headers,rows):
         data=[[para(x,'Cell') for x in headers]]+[[para(x,'Cell') for x in row] for row in rows]
         t=LongTable(data,colWidths=[width/len(headers)]*len(headers),repeatRows=1,splitInRow=1);t.setStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#e5e7eb')),('VALIGN',(0,0),(-1,-1),'TOP'),('LEFTPADDING',(0,0),(-1,-1),5),('RIGHTPADDING',(0,0),(-1,-1),5),('BOTTOMPADDING',(0,0),(-1,-1),8)]);story.extend((t,Spacer(1,12)))
+    pdf_overview(story,overview_records([dict(d,climber=f'Athlete {i+1}' if anonymous else d['climber']) for i,d in enumerate(documents)]),width,styles)
     for i,d in enumerate(documents):
-        if i:story.append(PageBreak())
-        name=f'Athlete {i+1}' if anonymous else d['climber'];m=metrics(d);c=d.get('coaching',{});add(name+' · attempt '+d['attempt'],'Title');add(d['route']+' · '+d['outcome']+' · '+' · '.join(v for v in d.get('context',{}).values() if v));add(c.get('goal') or 'No session goal recorded','Heading2')
+        story.append(PageBreak())
+        name=f'Athlete {i+1}' if anonymous else d['climber'];m=review_metrics(d);c=d.get('coaching',{});add(name+' · attempt '+d['attempt'],'Title');add(d['route']+' · '+d['outcome']+' · '+' · '.join(v for v in d.get('context',{}).values() if v));add(c.get('goal') or 'No session goal recorded','Heading2')
         grid(['Confirmed slips','Unplanned both feet off','Footwork coverage'],[[display(m['confirmed_slips']),display(m['unplanned_seconds'],' s'),display(m['coverage_share']*100 if m['coverage_share'] is not None else None,'%')]])
-        add(f"Candidates: {m['candidate_slips']}. Intentional feet off: {display(m['intentional_seconds'],' s')}. Total feet off {display(m['both_off_seconds'],' s')} / reviewed {display(m['reviewed_seconds'],' s')}. This is a description, not a quality score.")
+        add(f"Candidates: {display(m['candidate_slips'])}. Intentional feet off: {display(m['intentional_seconds'],' s')}. Total feet off {display(m['both_off_seconds'],' s')} / reviewed {display(m['reviewed_seconds'],' s')}. This is a description, not a quality score.")
         if m['fall_review_needed']:add('Fall start not marked: totals unknown until time after the fall can be excluded.')
         for key,title in [('reflection','Athlete reflection'),('action','Agreed next action'),('retest','Next-session check')]:
             story.extend((KeepTogether([para(title,'Heading3'),Spacer(1,6),para(c.get(key) or 'Not recorded')]),Spacer(1,12)))
@@ -206,7 +209,7 @@ def export_pdf(documents,path,anonymous=False,stills=None):
             for key,title in [('observation','Observed'),('interpretation','Coach interpretation'),('action','Agreed action')]:
                 if e.get(key):add(title+': '+e[key])
             card=story[card_start:];del story[card_start:];story.append(KeepTogether(card))
-        story.append(PageBreak());add('Evidence and timing appendix','Heading1');grid(['Event / limb','Review / intent','Original frame / PTS','Video seconds','Length s'],[[e['label']+' / '+e['limb'],e['status']+' / '+e['intent'],str(e['start']['frame'])+' / '+str(e['start']['pts']),f"{e['start']['seconds']:.3f}",f"{e['end']['seconds']-e['start']['seconds']:.3f}" if e['end'] else 'Point event'] for e in events])
+        story.append(PageBreak());add('Evidence and timing appendix','Heading1');grid(['Event / limb','Review / intent','Original frame / PTS','Video seconds','Length s'],[[e['label']+' / '+e['limb'],e['status']+' / '+e['intent'],str(e['start']['frame'])+' / '+str(e['start']['pts']),f"{e['start']['seconds']:.3f}",f"{e['end']['seconds']-e['start']['seconds']:.3f}" if e['end'] else 'Point event'] for e in events]);story.extend([pdf_footwork_timeline(d,width),Spacer(1,12)])
         for e in events:
             if any(e.get(k) for k in ('observation','interpretation','action')):
                 add(e['label']+f" · {e['start']['seconds']:.3f} s",'Heading3')

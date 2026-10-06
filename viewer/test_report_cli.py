@@ -17,7 +17,7 @@ def test_reproducible_html_source_and_pdf(tmp_path):
     assert main(['--source',str(source),'--output',str(tmp_path/'report.html'),'--focus','Athlete A','--pdf',str(tmp_path/'report.pdf')])==0
     html=(tmp_path/'report.html').read_text(encoding='utf-8')
     assert 'Athlete A: gaps minus marked recovery' in html and '&lt;private comment&gt;' in html
-    assert '20.00%' in html and source.read_bytes()==original
+    assert '2.00 s · Partial annotations' in html and 'donut' not in html and source.read_bytes()==original
     assert (tmp_path/'report.pdf').read_bytes().startswith(b'%PDF-')
     assert (tmp_path/'report.json').exists()
     assert (tmp_path/'report-focus-gaps.csv').exists()

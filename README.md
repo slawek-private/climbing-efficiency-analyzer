@@ -42,7 +42,7 @@ Windows: `tools/windows/start_manual_viewer.cmd`.
 Mac: `tools/macos/start_manual_viewer.command` after [macOS setup](docs/SETUP_MACOS.md).
 macOS source support and an Apple Silicon CI job are provided; M3 Pro interactive validation remains required.
 
-Three places: **Video analysis** for one climb, **Compare** climbs (table, charts, patterns,
+Three places: **Video analysis** for one climb, **Compare** climbs (overview, detailed metrics,
 side by side) and **Library**. Measurements save automatically; drop videos onto
 the window to start.
 
@@ -56,6 +56,11 @@ Installed apps update themselves from GitHub Releases after checking the
 installer's SHA-256 and release compatibility manifest (OS, architecture and
 supported source versions). Downloads wait for an explicit restart. Recording
 tips and the guided tour are available from Help, when you want them.
+
+**0.23.0:** one compact comparison overview with dashboards beneath the summary
+table, coverage-aware footwork, and clearer interactive HTML/PDF reports. Athlete,
+reference and checkpoint selections stay linked; raw measurements remain in Details
+and CSV/JSON. See [release notes](docs/RELEASE_0.23.0.md).
 
 **0.22.0:** filter hand events by activity, hand or note; clearly labelled current
 time; distinct hand timer controls; exact athlete selection and read-only event

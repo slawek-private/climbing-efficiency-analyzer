@@ -50,6 +50,7 @@ QScrollBar:vertical { background: $background; width: 10px; margin: 0; }
 QScrollBar::handle:vertical { background: $line; border-radius: 4px; min-height: 30px; }
 QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical { height: 0; }
 QLineEdit#eventSearch { min-width: 0; }
+QWidget#dashboardCard { background: $panel; border: 1px solid $soft; border-radius: 6px; }
 QTableWidget { background: $panel; alternate-background-color: $background; border: none; gridline-color: $soft; selection-background-color: $selected; selection-color: $ink; }
 QHeaderView { background: $background; }
 QHeaderView::section { background: $background; border: none; padding: 6px 8px; color: $muted; font-size: 12px; font-weight: 500; }
@@ -320,18 +321,19 @@ def build(w):
     w.compare_page=QWidget();cp=QVBoxLayout(w.compare_page);cp.setContentsMargins(0,6,0,0);w.compare_tabs=QTabWidget();w.compare_tabs.setDocumentMode(True)
     from .compare_scope import CompareScope
     w.compare_scope=CompareScope();w.compare_scope.changed.connect(w.refresh_comparison);cp.addWidget(w.compare_scope);cp.addWidget(w.compare_tabs)
-    comparison=QWidget();comparison.setObjectName('page');c=QVBoxLayout(comparison);c.setContentsMargins(16,14,16,14);c.setSpacing(8);w.comparison_page=comparison
+    comparison=QWidget();comparison.setObjectName('page');outer=QVBoxLayout(comparison);outer.setContentsMargins(0,0,0,0);overview_scroll=QScrollArea();overview_scroll.setWidgetResizable(True);overview_body=QWidget();c=QVBoxLayout(overview_body);c.setContentsMargins(16,14,16,14);c.setSpacing(12);overview_scroll.setWidget(overview_body);outer.addWidget(overview_scroll);w.comparison_page=comparison
     w.collection_summary=label('Mark a climb start and end in Video analysis to compare.','muted');c.addWidget(w.collection_summary)
     w.comparison_table=QTableWidget();w.comparison_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers);w.comparison_table.setAlternatingRowColors(True);w.comparison_table.setShowGrid(False);w.comparison_table.verticalHeader().hide()
     w.comparison_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows);w.comparison_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection);w.comparison_table.setSortingEnabled(True)
     w.comparison_table.cellDoubleClicked.connect(w.comparison_open);w.comparison_table.itemSelectionChanged.connect(w.comparison_selected);w.comparison_table.setToolTip('Click a column to sort. Select an athlete for details; double-click to open their video.')
-    w.bar_delegate=BarDelegate(w.comparison_table);c.addWidget(w.comparison_table,3)
-    w.comparison_detail_title=label('Select an athlete to see every rest, clip and chalk.','section');c.addWidget(w.comparison_detail_title)
+    w.bar_delegate=BarDelegate(w.comparison_table);c.addWidget(w.comparison_table)
+    from .charts import ComparisonCharts
+    w.comparison_charts=ComparisonCharts(embedded=True);c.addWidget(w.comparison_charts)
+    w.comparison_detail_toggle=button('Selected attempt · activity log ▸',lambda:w.toggle_comparison_detail(),'quiet');c.addWidget(w.comparison_detail_toggle)
+    w.comparison_detail_title=label('Select an athlete to see every rest, clip and chalk.','section');w.comparison_detail_title.hide();c.addWidget(w.comparison_detail_title)
     w.comparison_activity_table=QTableWidget(0,7);w.comparison_activity_table.setHorizontalHeaderLabels(['Activity','Hand','Quickdraw','Clip method','Start (s)','End (s)','Duration (s)'])
     w.comparison_activity_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers);w.comparison_activity_table.setAlternatingRowColors(True);w.comparison_activity_table.setShowGrid(False);w.comparison_activity_table.verticalHeader().hide();w.comparison_activity_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-    c.addWidget(w.comparison_activity_table,2);w.compare_tabs.addTab(comparison,'Table')
-    from .charts import ComparisonCharts
-    w.comparison_charts=ComparisonCharts();w.compare_tabs.addTab(w.comparison_charts,'Charts')
+    w.comparison_activity_table.hide();w.comparison_activity_table.setMinimumHeight(180);c.addWidget(w.comparison_activity_table);c.addStretch();w.compare_tabs.addTab(comparison,'Overview')
     from .dashboard import Dashboard
     w.pattern_dashboard=Dashboard();w.compare_tabs.addTab(w.pattern_dashboard,'More metrics')
     from .sync_view import SyncView
@@ -366,4 +368,4 @@ def apply_theme(w,theme):
     app.setPalette(palette);w.setStyleSheet(style+'\n'+extra_style(dark));w.theme='dark' if dark else 'light';w.appearance=theme;w.theme_button.setText('Light mode' if dark else 'Dark mode')
     for value,action in w.appearance_actions.items():action.setChecked(value==theme)
     for tile in w.sync_view.tiles:tile.timeline.dark=dark;tile.timeline.update()
-    w.precision_scrubber.dark=dark;w.precision_scrubber.update();w.comparison_charts.dark=dark;w.comparison_charts.redraw();w.settings.setValue('theme',theme)
+    w.precision_scrubber.dark=dark;w.precision_scrubber.update();w.comparison_charts.dark=dark;w.comparison_charts.redraw();w.pattern_dashboard.render();w.settings.setValue('theme',theme)

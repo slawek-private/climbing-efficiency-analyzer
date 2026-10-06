@@ -173,7 +173,7 @@ class Window(LegacyWindow):
     def show_view(self,widget):
         """Open a view, including those nested inside Compare."""
         if widget in (self.comparison_page,self.comparison_charts,self.pattern_dashboard,self.sync_view):
-            self.main_tabs.setCurrentWidget(self.compare_page);self.compare_tabs.setCurrentWidget(widget)
+            self.main_tabs.setCurrentWidget(self.compare_page);self.compare_tabs.setCurrentWidget(self.comparison_page if widget is self.comparison_charts else widget)
         else:self.main_tabs.setCurrentWidget(widget)
     def step(self,delta,single=False):
         if self.sync_active():return self.sync_view.step_frames(delta*(1 if single else self.frame_step.value()))
@@ -718,13 +718,13 @@ class Window(LegacyWindow):
         self.compare_scope.set_documents(documents);self.refresh_comparison()
     def refresh_comparison(self):
         documents=self.compare_scope.chosen();self.comparison_documents=documents;overview,points,_=rows(documents)
-        self.fill_leaderboard(overview,points);self.pattern_dashboard.update_documents(documents)
+        self.fill_leaderboard(overview,points);self.pattern_dashboard.checkpoint=self.compare_scope.point.currentText();self.pattern_dashboard.update_documents(documents)
         self.comparison_charts.checkpoint=self.compare_scope.point.currentText();self.comparison_charts.set_documents(documents)
         reference=documents[0]['climber']+' · '+documents[0]['attempt'] if documents else 'none'
-        self.collection_summary.setText(f'{len(documents)} attempts · route {self.compare_scope.route.currentText()} · reference {reference}. Gaps compare the same checkpoint. Marked recovery is descriptive; lower is not necessarily better. Review status appears in each metric’s tooltip.')
+        self.collection_summary.setText(f'{len(documents)} attempts · route {self.compare_scope.route.currentText()} · reference {reference}. Recorded recovery is descriptive. Footwork counts apply only to checked footage. Hover for exact values; double-click an attempt to open its video.')
         if self.sync_active():self.sync_view.activate()
     def fill_leaderboard(self,overview,points):
-        """Seven questions a coach asks, one row per attempt; every other number lives in the exports."""
+        """Six summary columns; every original measurement remains in exports."""
         from PySide6.QtGui import QColor
         from PySide6.QtCore import Qt
         class Sortable(QTableWidgetItem):
@@ -733,48 +733,30 @@ class Window(LegacyWindow):
                 if a is None or b is None:return (a is None)<(b is None)
                 return a<b
         self.comparison_rows=overview
-        names=sorted({p['point'] for p in points},key=str.casefold)
-        headers=['Athlete','Result','Climb','Marked recovery','Clips','Clip method']+names+['Review status']
-        table=self.comparison_table;table.setSortingEnabled(False);table.clear();table.setColumnCount(len(headers));table.setHorizontalHeaderLabels(headers);table.setRowCount(len(overview))
-        tips=['','','Climb start to marked end','Dedicated rest and chalking, overlaps counted once, as a share of the climb','Completed clips · average clip time','Rope to mouth / direct, where marked']+['Arrival from climb start · gap to the reference attempt']*len(names)+['Boundary / recovery / clip review. Unfinished timers remain provisional.']
-        for col,tip in enumerate(tips):table.horizontalHeaderItem(col).setToolTip(tip)
-        shares=[o['total_marked_rest_share'] for o in overview if o['total_marked_rest_share'] is not None];top=max(shares,default=0)
-        reference=overview[0] if overview else {}
-        best={name:min((p['seconds_from_climb_start'] for p in points if p['point']==name and all(p[k]==reference.get(k) for k in ('athlete','attempt','video','attempt_id')) and p['seconds_from_climb_start'] is not None),default=None) for name in names}
-        for row,o in enumerate(overview):
-            clips=o['clip_marked_count'];average=o['clip_marked_seconds']/clips if clips else None
-            methods=' / '.join(f'{o[k]} {w}' for k,w in (('clip_mouth_count','mouth'),('clip_direct_count','direct')) if o[k]) if o['clip_mouth_count'] is not None else None
-            result={'Fell / failed':'Fell','unknown':'—'}.get(o['outcome'],o['outcome'])
-            cells=[(o['athlete']+('' if o['attempt']=='1' else f' · {o["attempt"]}'),o['athlete'].casefold()),(result,o['outcome']),
-                   (f"{o['climb_seconds']:.1f} s" if o['climb_seconds'] is not None else '—',o['climb_seconds']),
-                   (f"{o['total_marked_rest_share']*100:.1f} %" if o['total_marked_rest_share'] is not None else '—',o['total_marked_rest_share']),
-                   (f'{clips} · {average:.1f} s avg' if average is not None else '—',clips),(methods or '—',methods)]
-            for name in names:
-                arrivals=[p['seconds_from_climb_start'] for p in points if p['point']==name and all(p[k]==o[k] for k in ('athlete','attempt','video','attempt_id')) and p['seconds_from_climb_start'] is not None]
-                first=min(arrivals,default=None);gap=first-best[name] if first is not None and best[name] is not None else None
-                cells.append((('—' if first is None else f'{first:.1f} s · '+('reference missing' if gap is None else f'{gap:+.1f} s vs ref')),first))
-            document=self.comparison_documents[row];reviewed=[name for key,name in [('boundaries','start/end'),('rests','recovery'),('clips','clips')] if document['reviewed'].get(key)]
-            status=(f"{len(document['open_events'])} unfinished · " if document['open_events'] else '')+('Reviewed: '+', '.join(reviewed) if reviewed else 'Not reviewed')
-            cells.append((status,status))
-            for col,(text,key) in enumerate(cells):
-                item=Sortable(text);item.setData(Qt.ItemDataRole.UserRole,key)
+        from .reporting import records,summary_cells,HEADERS
+        data=records(self.comparison_documents);checkpoint=self.compare_scope.point.currentText();headers=HEADERS.copy();headers[3]=checkpoint+' arrival'
+        table=self.comparison_table;table.setSortingEnabled(False);table.clear();table.setColumnCount(6);table.setHorizontalHeaderLabels(headers);table.setRowCount(len(overview))
+        reference=data[0] if data else None
+        for row,r in enumerate(data):
+            values=summary_cells(r,checkpoint);arrival=r['arrivals'].get(checkpoint);ref=reference['arrivals'].get(checkpoint) if reference else None
+            if arrival is not None and ref is not None:values[3]+=f' · {arrival-ref:+.2f} s vs ref'
+            if row==0:values[0]='Ref · '+values[0]
+            keys=[r['name'].casefold(),r['result'],r['climb'],arrival,r['recovery'],r['checked']]
+            for col,(value,key) in enumerate(zip(values,keys)):
+                item=Sortable(value);item.setData(Qt.ItemDataRole.UserRole,key)
                 if col==0:item.setData(Qt.ItemDataRole.UserRole+1,row)
-                if col==3:item.setData(Qt.ItemDataRole.UserRole+2,top)
-                doc=self.comparison_documents[row];review_key={2:'boundaries',3:'rests',4:'clips',5:'clips'}.get(col,'boundaries')
-                pending=any(e['kind'] in ({'rest','chalk'} if col==3 else {'clip'} if col in (4,5) else {'rest','clip','chalk','contact','offwall'}) for e in doc['open_events'])
-                item.setToolTip(('Unfinished timer — provisional. ' if pending else '')+('Reviewed' if doc['reviewed'].get(review_key) and doc['reviewed'].get('boundaries') else 'Not reviewed — marked measurements only'))
-                if text=='—':item.setToolTip('Not marked')
-                table.setItem(row,col,item)
-        table.setItemDelegateForColumn(3,self.bar_delegate);table.setSortingEnabled(True);table.resizeColumnsToContents();table.horizontalHeader().setStretchLastSection(True);table.horizontalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignLeft|Qt.AlignmentFlag.AlignVCenter)
-        # Fit the leaderboard to its rows so the detail below gets the space.
-        table.setMaximumHeight(table.horizontalHeader().height()+sum(table.rowHeight(r) for r in range(table.rowCount()))+6 if table.rowCount()<12 else 16777215)
-        if table.columnWidth(3)<140:table.setColumnWidth(3,140)
+                item.setToolTip(['Double-click to open this exact attempt','Marked result','Marked climb start to end; falls and tops are not ranked', 'Unique arrival inside climb boundaries. Missing or repeated arrivals are unknown',r['recovery_state']+' · rest and chalking overlaps counted once; unknown is not zero',r['foot_state']+' · only visible, checked footage contributes to footwork totals'][col]);table.setItem(row,col,item)
+        table.setSortingEnabled(True);table.resizeColumnsToContents();table.horizontalHeader().setStretchLastSection(True);table.horizontalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignLeft|Qt.AlignmentFlag.AlignVCenter)
+        height=table.horizontalHeader().height()+sum(table.rowHeight(r) for r in range(min(8,table.rowCount())))+6
+        table.setFixedHeight(max(60,height))
         self.comparison_selected()
     def comparison_summary(self,row):
         from PySide6.QtCore import Qt
         item=self.comparison_table.item(row,0)
         index=item.data(Qt.ItemDataRole.UserRole+1) if item else None
         return self.comparison_rows[index] if index is not None and index<len(self.comparison_rows) else None
+    def toggle_comparison_detail(self):
+        visible=not self.comparison_activity_table.isVisible();self.comparison_activity_table.setVisible(visible);self.comparison_detail_title.setVisible(visible);self.comparison_detail_toggle.setText('Selected attempt · activity log '+('▾' if visible else '▸'))
     def comparison_selected(self):
         table=self.comparison_activity_table;summary=self.comparison_summary(self.comparison_table.currentRow()) if self.comparison_table.selectedItems() else None
         if not summary:

@@ -64,7 +64,7 @@ def main():
         def settle(predicate=lambda:True,seconds=8):
             end=time.monotonic()+seconds
             while not predicate() and time.monotonic()<end:app.processEvents();time.sleep(.01)
-            app.processEvents()
+            for _ in range(4):app.processEvents();QTest.qWait(15)
         from viewer.design import apply_theme
         # A running left-hand rest shows the timers' active state.
         window.history.document['open_events'].append({'kind':'rest','hand':'left','target':None,'start':window.reader.point(342),'confidence':1,'notes':''});window.refresh()
@@ -77,8 +77,11 @@ def main():
         window.show_view(window.sync_view);settle(lambda:window.sync_view.tiles and all(t.shown is not None for t in window.sync_view.tiles))
         window.sync_view.seek(20);settle(lambda:all(t.shown==t.wanted for t in window.sync_view.tiles));window.grab().save(str(destination/'side-by-side.png'))
         apply_theme(window,'light')
-        window.show_view(window.comparison_page);window.comparison_table.selectRow(0);settle();window.grab().save(str(destination/'athlete-comparison.png'))
+        window.compare_scope.point.setCurrentText('REST');window.show_view(window.comparison_page);window.comparison_table.selectRow(0);settle();window.grab().save(str(destination/'athlete-comparison.png'))
         window.show_view(window.comparison_charts);window.compare_scope.point.setCurrentText('REST');settle();window.grab().save(str(destination/'comparison-charts.png'))
+        qa=repository/'artifacts'/'reporting-qa-0.23.0';qa.mkdir(parents=True,exist_ok=True)
+        apply_theme(window,'dark');settle();window.grab().save(str(qa/'overview-dark.png'))
+        window.resize(1024,768);settle();window.grab().save(str(qa/'overview-laptop.png'));window.resize(1280,800);apply_theme(window,'light')
         window.show_view(window.pattern_dashboard);window.pattern_dashboard.tabs.setCurrentIndex(5);settle();window.grab().save(str(destination/'time-allocation.png'))
         window.show_view(window.measure_page);window.resize(1024,768);settle();window.measurement_scroll.verticalScrollBar().setValue(0);settle();window.grab().save(str(destination/'workspace-laptop.png'))
         window.footwork_panel.toggle.setChecked(True);settle();window.measurement_scroll.ensureWidgetVisible(window.footwork_panel.body);settle();window.grab().save(str(destination/'workspace-footwork.png'))
@@ -87,7 +90,7 @@ def main():
         for e in example['events']:e['notes']=''
         example['footwork']['fall_onset']=None;example['footwork']['coverage']=[{'id':'review-a','start':point(0),'end':point(10),'state':'reviewed'},{'id':'hidden','start':point(10),'end':point(16),'state':'obscured'},{'id':'review-b','start':point(16),'end':point(60),'state':'reviewed'}]
         event=example['footwork']['events'][0];example['footwork']['events'] += [dict(event,id='left-slip',limb='left',start=point(18.2),observation='Left foot visibly loses contact'),dict(event,id='uncertain-slip',limb='uncertain',start=point(12.3),status='uncertain',intent='uncertain',observation='Foot hidden by the wall',interpretation='',action=''),dict(example['footwork']['events'][1],id='intentional-off',start=point(27),end=point(28.6),intent='intentional',observation='Deliberate dynamic foot release')]
-        target=repository/'artifacts'/'coaching-preview-0.22.0'/'coaching-review.html'
+        target=repository/'artifacts'/'coaching-preview-0.23.0'/'coaching-review.html'
         export_report([example],target,sources={example['attempt_id']:root/'demo-1.mkv'},media='clips',pdf=True)
         print('Fictional coaching example:',target)
         window.saved=copy.deepcopy(window.document());window.close()

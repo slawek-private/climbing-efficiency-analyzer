@@ -46,17 +46,22 @@ def build_report(source,output,focus=None,route=''):
     output.parent.mkdir(parents=True,exist_ok=True)
     digest=hashlib.sha256(source.read_bytes()).hexdigest()
     parts=[section('Measurement source','<p>This report uses only '+escape(source.name)+'. Values derived from an HTML snapshot inherit the source’s rounding. Missing measurements remain unknown; these are human annotations, not independently validated accuracy measurements. Combined recovery is the union of dedicated rest and chalking across hands. The remainder is not measured active movement.</p>')]
-    parts.append(charts(overview,points,activities,section,table,focus=focus))
+    from .reporting import read_snapshot,records,overview_html,details_html,snapshot,eligible_clip_rows,gap_peers
+    documents=read_snapshot(source)
+    if documents is not None:
+        if focus:documents.sort(key=lambda d:d['climber']!=focus)
+        parts.insert(0,overview_html(records(documents)))
+    else:parts.insert(0,charts(overview,points,activities,section,table,focus=focus))
     if focus:
         targets=[s for s in overview if s['athlete']==focus]
         if len(targets)!=1:raise ValueError('Focus must identify exactly one athlete/attempt in this export')
         target=targets[0]
-        def matched(row):return all(row.get(k)==target.get(k) for k in ('athlete','attempt','video'))
-        own={c['quickdraw']:c for c in activities if matched(c) and c['activity']=='clip' and c['status']=='closed'}
+        def matched(row):return all(row.get(k) is None or row.get(k)==target.get(k) for k in ('athlete','attempt','video'))
+        own=eligible_clip_rows(activities,target)
         comparisons=[]
         for other in overview:
-            if other is target:continue
-            peer={c['quickdraw']:c for c in activities if all(c.get(k)==other.get(k) for k in ('athlete','attempt','video')) and c['activity']=='clip' and c['status']=='closed'}
+            if other is target or other.get('route')!=target.get('route'):continue
+            peer=eligible_clip_rows(activities,other)
             shared=sorted(set(own)&set(peer),key=lambda x:float(x))
             ours=sum(number(own[k]['duration seconds']) for k in shared) if shared else None
             theirs=sum(number(peer[k]['duration seconds']) for k in shared) if shared else None
@@ -64,14 +69,13 @@ def build_report(source,output,focus=None,route=''):
         parts.append(section(f'{focus}: matched clipping comparison',table(['Peer','Attempt','Shared draws','Focus clip time s','Peer clip time s','Focus − peer s'],comparisons)+'<p>Positive differences mean the focus athlete spent longer. Matching the same draws avoids comparing a five-clip attempt with an eight-clip total.</p>'))
         gap_rows=[]
         for row in splits:
-            if row['athlete']!=focus:continue
+            if not matched(row):continue
             residual=number(row['gap outside marked rest seconds'])
-            peers=[number(p['gap outside marked rest seconds']) for p in splits if p['athlete']!=focus and p['from quickdraw']==row['from quickdraw'] and p['to quickdraw']==row['to quickdraw'] and number(p['gap outside marked rest seconds']) is not None]
+            peers=gap_peers(splits,row,overview)
             med=median(peers) if peers else None
             delta=residual-med if residual is not None and med is not None else None
             gap_rows.append([row['from quickdraw']+' → '+row['to quickdraw'],number(row['gap seconds']),number(row['total marked rest in gap seconds']),residual,med,delta,'Longer than peer median' if delta is not None and delta>0 else 'Shorter than peer median' if delta is not None and delta<0 else 'Equal / unavailable'])
-        parts.append(section(f'{focus}: gaps minus marked recovery',table(['Split','Raw gap s','Recovery removed s','Outside recovery s','Peer median s','Difference s','Flag'],gap_rows)+'<p>Subtracts the union of marked rest and chalking within each gap. Overlaps count once. These descriptive flags are not statistical significance or a measure of movement time.</p>'))
-        if gap_rows:parts.append(section('Gaps outside marked recovery',bars('Gaps minus marked recovery',[(r[0],r[3]) for r in gap_rows if r[3] is not None],' s',highlight=focus)))
+        parts.append(section(f'{focus}: gaps minus marked recovery',table(['Split','Raw gap s','Recovery removed s','Unclassified s','Peer median s','Difference s','Flag'],gap_rows)+(bars('Unclassified time between clips',[(r[0],r[3]) for r in gap_rows if r[3] is not None],' s') if gap_rows else '')+'<p>Subtracts the union of marked rest and chalking within each gap. Overlaps count once. These descriptive flags are not statistical significance or a measure of movement time.</p>'))
         with output.with_name(output.stem+'-focus-gaps.csv').open('w',newline='',encoding='utf-8-sig') as f:
             writer=csv.writer(f);writer.writerow(['split','gap_seconds','recovery_removed_seconds','outside_recovery_seconds','peer_median_seconds','difference_seconds','flag']);writer.writerows(gap_rows)
     # Copy data as escaped text, never active source HTML, scripts or remote assets.
@@ -79,9 +83,11 @@ def build_report(source,output,focus=None,route=''):
         t=next((t for t in parser.tables if t and required<=set(t[0])),None)
         if t:parts.append(section(title,table(t[0],t[1:])))
     parts.append(section('Reproducibility','<p>Source SHA256: <code>'+digest+'</code>. Source file is preserved. No videos are embedded; no external fonts, scripts or services are used. End outcomes are shown only when present in the export.</p>'))
-    header='<header><div class="eyebrow">Human-assisted climbing measurements</div><h1>Climbing performance & efficiency</h1><p>'+escape(route or source.stem)+'</p></header>'
-    output.write_text('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Climbing comparison</title><style>'+STYLE+'</style></head><body>'+header+''.join(parts)+'</body></html>',encoding='utf-8')
-    output.with_suffix('.json').write_text(json.dumps({'source':source.name,'source_sha256':digest,'focus':focus,'overview':overview,'points':points,'activities':activities,'splits':splits},indent=2),encoding='utf-8')
+    if documents is not None:parts.append(details_html(documents))
+    parts=parts[:1]+['<details><summary>Details · matched timing, full tables and provenance</summary>'+''.join(parts[1:])+'</details>']
+    header='<header><div class="eyebrow">Human-assisted climbing measurements</div><h1>Climb comparison</h1><p>'+escape(route or source.stem)+'</p></header>'
+    output.write_text('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Climbing comparison</title><style>'+STYLE+'</style></head><body>'+header+''.join(parts)+(snapshot(documents) if documents is not None else '')+'</body></html>',encoding='utf-8')
+    output.with_suffix('.json').write_text(json.dumps({'source':source.name,'source_sha256':digest,'focus':focus,'attempts':documents,'overview':overview,'points':points,'activities':activities,'splits':splits},indent=2),encoding='utf-8')
     return output
 
 def main(argv=None):

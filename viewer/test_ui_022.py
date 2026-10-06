@@ -95,10 +95,10 @@ def test_graph_and_timeline_hovers_identify_data_without_colour(tmp_path,monkeyp
     assert 'Current video time' in scrubber.hover_text(scrubber.playhead_rect.center())
     clip_rect,clip=scrubber.event_hits[0];tip=scrubber.hover_text(clip_rect.center())
     assert 'Left' in tip and 'Clip' in tip and '0.200 s' in tip
-    w.show_view(w.comparison_charts);app.processEvents();chart=w.comparison_charts.scroll.widget().findChildren(ResponsiveChart)[0]
-    scale=min(chart.width()/900,chart.height()/chart.base_height);y=(chart.height()-chart.base_height*scale)/2+25*scale
-    assert 'reference attempt' in chart.hover_text(y) and 'Marked recovery' in chart.hover_text(y)
-    assert 'reference attempt' in chart.accessibleDescription()
+    w.show_view(w.comparison_charts);app.processEvents();chart=w.comparison_charts.findChildren(ResponsiveChart)[0]
+    scale=min(chart.width()/600,chart.height()/chart.base_height);y=(chart.height()-chart.base_height*scale)/2+25*scale
+    assert 'Ref · ' in chart.hover_text(y) and 'Arrival at' in chart.hover_text(y)
+    assert 'Ref · ' in chart.accessibleDescription()
     w.show_view(w.pattern_dashboard);w.pattern_dashboard.tabs.setCurrentIndex(5);app.processEvents();allocation=w.pattern_dashboard.chart;allocation.grab()
     assert isinstance(allocation,AllocationChart) and allocation.hits
     rect,_=next((r,t) for r,t in allocation.hits if 'rest:' in t)

@@ -46,17 +46,20 @@ def test_leaderboard_gaps_sorting_and_detail(tmp_path,monkeypatch):
         d['events']=[{'id':name+'c','kind':'clip','hand':'left','target':1,'start':point(5),'end':point(8),'confidence':1,'notes':'','clip_method':'mouth'}]
         if name!='Anna':d['events'].append({'id':name+'r','kind':'rest','hand':'right','target':None,'start':point(30),'end':point(30+arrival//5),'confidence':1,'notes':''})
         w.workspace.remember(path,d)
-    w.refresh_collection();t=w.comparison_table
+    w.refresh_collection();w.compare_scope.point.setCurrentText('Roof');t=w.comparison_table
     headers=[t.horizontalHeaderItem(c).text() for c in range(t.columnCount())]
-    assert headers==['Athlete','Result','Climb','Marked recovery','Clips','Clip method','Roof','Review status']
-    cells={t.item(r,0).text():[t.item(r,c).text() for c in range(t.columnCount())] for r in range(t.rowCount())}
-    assert cells['Ben'][6]=='2.0 s · -1.0 s vs ref' and cells['Anna'][6]=='3.0 s · +0.0 s vs ref' and cells['Cleo'][4]=='1 · 0.3 s avg' and cells['Cleo'][5]=='1 mouth' and cells['Anna'][3]=='—' and cells['Ben'][3]=='5.7 %'
-    t.sortItems(6);assert [t.item(r,0).text() for r in range(3)]==['Ben','Cleo','Anna']
-    assert w.comparison_summary(0)['athlete']=='Ben'
+    assert headers==['Athlete / attempt','Result','Climb time','Roof arrival','Recorded recovery','Footwork checked']
+    cells={w.comparison_summary(r)['athlete']:[t.item(r,c).text() for c in range(t.columnCount())] for r in range(t.rowCount())}
+    assert cells['Ben'][3]=='2.00 s · -1.00 s vs ref' and cells['Anna'][3]=='3.00 s · +0.00 s vs ref'
+    assert cells['Anna'][4]=='Unknown' and cells['Ben'][4]=='0.40 s · Partial annotations' and cells['Cleo'][5]=='Unknown'
+    t.sortItems(3);assert [w.comparison_summary(r)['athlete'] for r in range(3)]==['Ben','Cleo','Anna']
     t.selectRow(2);assert w.comparison_activity_table.rowCount()==1 and w.comparison_activity_table.item(0,3).text()=='Rope to mouth' and 'Anna' in w.comparison_detail_title.text()
     w.show_view(w.comparison_charts);app.processEvents()
+    assert w.compare_tabs.currentWidget() is w.comparison_page and w.compare_tabs.tabText(0)=='Overview'
+    assert not w.comparison_activity_table.isVisible()
+    w.comparison_detail_toggle.click();assert w.comparison_activity_table.isVisible()
     from PySide6.QtSvgWidgets import QSvgWidget
-    svgs=w.comparison_charts.scroll.widget().findChildren(QSvgWidget);assert svgs and all(500<=s.width()<=1000 for s in svgs)
+    svgs=w.comparison_charts.findChildren(QSvgWidget);assert svgs and all(300<=s.width()<=1000 for s in svgs)
     w.close()
 
 def test_side_by_side_frame_step_and_library_button(tmp_path,monkeypatch):

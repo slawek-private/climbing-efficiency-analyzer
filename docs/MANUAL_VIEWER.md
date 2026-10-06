@@ -232,3 +232,22 @@ markers. Colour reinforces these text and shape cues.
 The Footwork menu now says **Mark where the fall starts**. This keeps video time
 after falling out of foot-contact measurements; it does not identify why a fall
 happened. Source frames, presentation timestamps and metric definitions are unchanged.
+
+## 0.23: overview and dashboards
+
+Compare opens **Overview**: athlete/attempt, result, climb time, selected checkpoint
+arrival, recorded recovery and footwork checked. Four dashboards immediately below
+show the selected checkpoint, one matching quickdraw (choose another in its selector),
+recovery seconds and footwork observations with patterned coverage. Names, values,
+units and the reference appear in text. Hover for full values and review eligibility.
+Click a row for its collapsed activity log; double-click to open that exact attempt.
+
+**More metrics** pairs numeric tables with checkpoint, matched-clip and gap charts.
+Its Footwork tab adds a coverage-aware event timeline. These views and Side by side
+use the same athlete, route, reference and checkpoint controls. Missing/repeated
+arrivals and unfinished or repeated clips remain unavailable in comparable plots.
+Recovery is descriptive; time outside recorded recovery is unclassified.
+
+HTML and PDF exports follow the overview with evidence, coaching actions and detailed
+measurement appendices. HTML controls are local and change presentation only. The
+coaching report retains optional local replay. [Report generation](REPORTS.md).

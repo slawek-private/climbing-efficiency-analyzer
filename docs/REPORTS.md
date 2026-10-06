@@ -10,12 +10,17 @@ local, with embedded SVG charts and no network assets. Age is not used.
 uv run --no-sync python -m viewer.report_cli --source artifacts/reports/all-athletes-labelled-v2.html --output artifacts/reports/comparison.html --focus "Athlete A" --route "Blue route 7c+/8a"
 ```
 
-Only the supplied HTML is read for measurements. The output includes recovery
-donuts, dedicated rest / chalk / combined recovery percentages, shared REST
-arrivals, eight-clip totals, matched quickdraw comparisons, and focus-athlete
-between-clip gaps after removing marked recovery. Positive median differences
-flag longer gaps. HTML snapshots round values; derived results inherit that
-precision. Source files are not overwritten.
+Only the supplied HTML is read for measurements. New (0.23+) comparison exports
+contain a validated inert JSON snapshot of the original labels; dashboards can
+therefore retain full stored precision, including source frames and PTS. Older
+HTML snapshots are still accepted at their displayed precision; footwork and
+review flags missing from them remain unknown. Source files are not overwritten.
+
+Reports start with a six-column overview and four dashboards: selected checkpoint
+arrival, matching quickdraw duration, recorded recovery, and footwork observations
+with explicit coverage. Route, athlete, reference, checkpoint and quickdraw controls
+work offline. Additional timing tables and charts sit in Details, with raw activity
+logs and source provenance. Recovery donuts and ability rankings are absent.
 
 ## From saved labels
 
@@ -46,7 +51,7 @@ ignored private directories. Do not upload them to CI or commit them.
 
 ## PDF output
 
-Add `--pdf artifacts/reports/comparison.pdf` to either command. PDF generation uses ReportLab locally: vector charts, repeated table headers, page numbers, focus comparisons, recovery percentages and full event tables. PDF files and their telemetry stay outside Git.
+Add `--pdf artifacts/reports/comparison.pdf` to either command. PDF generation uses ReportLab locally: vector charts, repeated table headers, page numbers, matching timing comparisons, footwork coverage, evidence and full event tables. PDF files and their telemetry stay outside Git.
 
 ## Coaching reports (0.21.0)
 
@@ -54,7 +59,7 @@ Add `--pdf artifacts/reports/comparison.pdf` to either command. PDF generation u
 selected attempts with optional local replay sections and stills, printable PDF,
 event/summary CSV and full JSON attempt snapshots. Footage is excluded by default.
 Coverage and fall onset determine which reviewed footwork metrics are available.
-The existing comparison CLI above retains its timing-focused layout. For the new
-coaching layout use `python -m viewer.coaching_report`; see the
+Both export paths now use the same overview. For goal-led evidence and optional
+local video sections use `python -m viewer.coaching_report`; see the
 [coaching guide](COACHING_REVIEW.md) for commands, media scope, compatibility and
 precise measurement definitions.

@@ -1,61 +1,70 @@
-"""Responsive charts for the shared selection, with explicit eligibility per metric."""
-from html import escape
-from PySide6.QtCore import QByteArray,Qt
+"""Compact comparison dashboards below the shared overview table."""
+from PySide6.QtCore import QByteArray
 from PySide6.QtSvgWidgets import QSvgWidget
-from PySide6.QtWidgets import QWidget,QVBoxLayout,QLabel,QScrollArea,QSizePolicy,QToolTip
-from .labels import rest_breakdown
-
+from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QGridLayout,QLabel,QScrollArea,QSizePolicy,QToolTip,QComboBox
+from .reporting import records,chart_specs,svg_chart,row_text
 
 class ResponsiveChart(QSvgWidget):
-    def __init__(self,svg,height,details=None):
-        super().__init__();self.load(QByteArray(svg.encode()));self.base_height=height;self.details=details or [];self.setMouseTracking(True);self.setAccessibleDescription("\n".join(self.details))
+    def __init__(self,svg,height,details=None,step=54):
+        super().__init__();from PySide6.QtWidgets import QApplication
+        from html import escape
+        svg=svg.replace('<svg ', '<svg font-family="'+escape(QApplication.font().family(),quote=True)+'" ',1);self.load(QByteArray(svg.encode()));self.base_height=height;self.step=step;self.details=details or [];self.setMouseTracking(True);self.setAccessibleDescription('\n'.join(self.details))
         self.setSizePolicy(QSizePolicy.Policy.Expanding,QSizePolicy.Policy.Fixed);self.setMaximumWidth(1000)
     def resizeEvent(self,event):
-        self.setFixedHeight(max(self.base_height,int(self.width()*self.base_height/900)));super().resizeEvent(event)
+        self.setFixedHeight(max(55,int(self.width()*self.base_height/600)));super().resizeEvent(event)
     def hover_text(self,y):
-        scale=min(self.width()/900,self.height()/self.base_height);top=(self.height()-self.base_height*scale)/2
-        row=int(((y-top)/max(.001,scale)-12)//44)
+        scale=min(self.width()/600,self.height()/self.base_height);top=(self.height()-self.base_height*scale)/2
+        row=int(((y-top)/max(.001,scale)-12)//self.step)
         return self.details[row] if 0<=row<len(self.details) else ''
     def mouseMoveEvent(self,event):
         tip=self.hover_text(event.position().y())
         if tip:QToolTip.showText(event.globalPosition().toPoint(),tip,self)
         else:QToolTip.hideText()
 
-
 class ComparisonCharts(QWidget):
-    def __init__(self):
-        super().__init__();self.documents=[];self.dark=False;self.checkpoint='Climb start';layout=QVBoxLayout(self)
-        note=QLabel('Reference labelled Ref, then selected attempts. Hover a row for full name and value. Only matched, closed measurements appear. Unreviewed annotations are provisional; missing is unknown.');note.setWordWrap(True);layout.addWidget(note)
-        self.scroll=QScrollArea();self.scroll.setWidgetResizable(True);layout.addWidget(self.scroll)
+    def __init__(self,embedded=False):
+        super().__init__();self.documents=[];self.dark=False;self.checkpoint='Climb start';self.embedded=embedded;self.draw_page=0;layout=QVBoxLayout(self);layout.setContentsMargins(0,0,0,0)
+        self.body=QWidget();self.grid=QGridLayout(self.body);self.grid.setContentsMargins(0,0,0,0);self.grid.setSpacing(16)
+        if embedded:layout.addWidget(self.body)
+        else:
+            self.scroll=QScrollArea();self.scroll.setWidgetResizable(True);self.scroll.setWidget(self.body);layout.addWidget(self.scroll)
     def set_documents(self,documents):self.documents=documents;self.redraw()
     def redraw(self):
-        container=QWidget();column=QVBoxLayout(container);column.setSpacing(14)
-        docs=self.documents;names=[f"{d['climber']} · {d['attempt']}" for d in docs]
-        def closed(d,kinds):return not any(e['kind'] in kinds for e in d['open_events'])
-        def plot(title,values,unit,review):
-            heading=QLabel(title);heading.setObjectName('section');column.addWidget(heading)
-            items=[(i,v) for i,v in enumerate(values) if v is not None]
-            excluded=len(values)-len(items);note=QLabel(f'{len(items)} eligible · {excluded} missing or unfinished. '+review);note.setWordWrap(True);note.setObjectName('muted');column.addWidget(note)
-            if not items:return
-            ink='#d6e2f4' if self.dark else '#25334a';height=20+len(items)*44;maximum=max([v for _,v in items]+[1])
-            details=[];svg=f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 {height}">'
-            for row,(i,value) in enumerate(items):
-                y=12+row*44;bar=510*value/maximum;color='#92c5ff' if self.dark and i==0 else '#245fc4' if i==0 else '#8293a8'
-                details.append(f'{names[i]} · {title}: {value:.3f}{unit}'+(' · reference attempt' if i==0 else '')+' · '+review)
-                label=('Ref · ' if i==0 else '')+names[i]
-                svg+=f'<text x="0" y="{y+19}" fill="{ink}" font-size="14">{escape(label[:30])}</text><rect x="235" y="{y}" width="{bar}" height="26" rx="4" fill="{color}"/><text x="{245+bar}" y="{y+19}" fill="{ink}" font-size="14">{value:.1f}{unit}</text>'
-            column.addWidget(ResponsiveChart(svg+'</svg>',height,details))
-        plot('Marked recovery · share of marked climb',[(rest_breakdown(d)['total_marked_rest_share']*100 if rest_breakdown(d)['total_marked_rest_share'] is not None else None) if closed(d,{'rest','chalk'}) else None for d in docs],' %','Rest and chalking overlap once. This is not an efficiency score.')
-        if self.checkpoint!='Climb start':
-            values=[min([p['point']['seconds']-d['start']['seconds'] for p in d.get('checkpoints',[]) if p['name']==self.checkpoint and d['start'] and p['point']['seconds']>=d['start']['seconds'] and (not d['end'] or p['point']['seconds']<=d['end']['seconds'])],default=None) for d in docs]
-            plot('Arrival at '+self.checkpoint,values,' s','Seconds from each marked climb start.')
-        draws=sorted({e['target'] for d in docs for e in d['events'] if e['kind']=='clip' and e['target'] is not None})
-        for draw in draws:
-            values=[]
-            for d in docs:
-                clips=[e for e in d['events'] if e['kind']=='clip' and e['target']==draw and d['start'] and d['end'] and e['start']['seconds']>=d['start']['seconds'] and e['end']['seconds']<=d['end']['seconds']]
-                values.append(clips[0]['end']['seconds']-clips[0]['start']['seconds'] if len(clips)==1 and closed(d,{'clip'}) else None)
-            plot(f'Quickdraw {draw} · clip duration',values,' s','One complete clip at this draw within climb boundaries; repeated clips excluded.')
-        if not docs:column.addWidget(QLabel('Select attempts on the same route to compare.'))
-        column.addStretch();old=self.scroll.takeWidget();self.scroll.setWidget(container)
-        if old:old.deleteLater()
+        while self.grid.count():
+            item=self.grid.takeAt(0)
+            if item.widget():
+                widget=item.widget();widget.setParent(None);widget.deleteLater()
+        data=records(self.documents);draws=sorted({n for r in data for n in r['clips']},key=float);self.draw_page=min(self.draw_page,max(0,len(draws)-1))
+        arrival,clips,recovery,foot=chart_specs(data,self.checkpoint,draws[self.draw_page:self.draw_page+1])
+        def add_plot(column,spec):
+            title=QLabel(spec['title']);title.setObjectName('section');column.addWidget(title)
+            note=QLabel(spec['note']);note.setObjectName('muted');note.setWordWrap(True);column.addWidget(note)
+            svg,height,step=svg_chart(spec,self.dark);column.addWidget(ResponsiveChart(svg,height,[row_text(r,spec) for r in spec['rows']],step))
+        for index,spec in enumerate([arrival,None,recovery,foot]):
+            card=QWidget();card.setObjectName('dashboardCard');v=QVBoxLayout(card);v.setContentsMargins(12,12,12,12)
+            if index==1:
+                line=QHBoxLayout();line.addWidget(QLabel('Clip duration · matching draws'));selector=QComboBox()
+                for i in range(len(draws)):selector.addItem('Quickdraw '+draws[i],i)
+                selector.setCurrentIndex(self.draw_page);selector.setEnabled(len(draws)>1);selector.setToolTip('Choose a matching quickdraw. Shared athlete and reference selection applies.');selector.currentIndexChanged.connect(self.select_draw_page);line.addWidget(selector);v.addLayout(line)
+                for clip in clips:add_plot(v,clip)
+                if not clips:v.addWidget(QLabel('No complete clip annotations.'))
+            else:add_plot(v,spec)
+            v.addStretch();self.grid.addWidget(card,index//2,index%2)
+        self.grid.setColumnStretch(0,1);self.grid.setColumnStretch(1,1)
+    def select_draw_page(self,index):
+        if index>=0 and index!=self.draw_page:self.draw_page=index;self.redraw()
+
+class DetailPlots(QWidget):
+    """Charts paired with the existing detailed numeric tables."""
+    def __init__(self):super().__init__();self.specs=[];self.column=QVBoxLayout(self);self.column.setContentsMargins(0,0,0,0)
+    def set_specs(self,specs):
+        self.specs=specs
+        while self.column.count():
+            item=self.column.takeAt(0)
+            if item.widget():
+                widget=item.widget();widget.setParent(None);widget.deleteLater()
+        dark=self.palette().window().color().lightness()<128
+        for spec in specs:
+            title=QLabel(spec['title']);title.setObjectName('section');self.column.addWidget(title)
+            note=QLabel(spec['note']);note.setObjectName('muted');note.setWordWrap(True);self.column.addWidget(note)
+            svg,height,step=svg_chart(spec,dark);self.column.addWidget(ResponsiveChart(svg,height,[row_text(r,spec) for r in spec['rows']],step))
