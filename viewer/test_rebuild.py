@@ -13,7 +13,7 @@ def window(tmp_path,monkeypatch):
     import viewer.simple as simple,viewer.sync_view as sync
     monkeypatch.setattr(simple,'ROOT',tmp_path);monkeypatch.setattr(sync,'ROOT',tmp_path)
     settings=QSettings(str(tmp_path/'settings.ini'),QSettings.Format.IniFormat);monkeypatch.setattr(simple,'QSettings',lambda *a:settings)
-    app=QApplication.instance() or QApplication([]);w=simple.Window();w.workspace=Workspace(tmp_path/'workspace.json');w.async_decode=False;w.resize(1300,900);w.show();app.processEvents()
+    app=QApplication.instance() or QApplication([]);app.setStyle('Fusion');w=simple.Window();w.workspace=Workspace(tmp_path/'workspace.json');w.async_decode=False;w.resize(1300,900);w.show();app.processEvents()
     return app,w
 
 def test_empty_state_then_loaded_video_and_autosave_without_dialog(tmp_path,monkeypatch):
