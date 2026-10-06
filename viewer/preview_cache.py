@@ -21,6 +21,8 @@ class PreviewReader:
         offsets=meta['offsets'];size=(folder/meta['data']).stat().st_size
         if len(offsets)!=len(index['pts'])+1 or offsets[0]!=0 or offsets[-1]!=size or any(a>=b for a,b in zip(offsets,offsets[1:])):raise ValueError('Incomplete preview cache')
         self.index=index;self.offsets=offsets;self.file=(folder/meta['data']).open('rb');self.cache=OrderedDict()
+        try:(folder/'manifest.json').touch()  # last use, for least-recently-used clean-up
+        except OSError:pass
         from fractions import Fraction
         self.times=[float((p-index['pts'][0])*Fraction(index['source']['time_base'])) for p in index['pts']]
     def point(self,number):return {'frame':number,'pts':self.index['pts'][number],'seconds':self.times[number]}

@@ -33,7 +33,7 @@ def test_videos_align_at_climb_start(tmp_path,monkeypatch):
     view=w.sync_view;assert 'not marked: C' in view.note.text()
     assert [t.wanted for t in view.tiles]==[3,7]
     view.step(.5);assert [t.wanted for t in view.tiles]==[8,12]
-    view.seek(-1);assert [t.wanted for t in view.tiles]==[0,0] and 'before video start' in view.tiles[0].status.text()
+    view.seek(-1);assert [t.wanted for t in view.tiles]==[0,0] and 'not started' in view.tiles[0].status.text()
     wait_until(app,lambda:all(t.shown==t.wanted for t in view.tiles))
     view.seek(0);view.toggle_play();wait_until(app,lambda:view.t>.2);view.pause()
     assert all(t.wanted==frame_at(t.reader.times,t.anchor+view.t) for t in view.tiles)

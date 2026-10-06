@@ -24,5 +24,10 @@ def run():
         html = export_comparison([document], folder/'check.html');export_pdf(html, folder/'check.pdf')
         assert (folder/'check.pdf').read_bytes().startswith(b'%PDF')
         app = QApplication.instance() or QApplication(sys.argv);window = Window();window.saved = window.document();window.close()
+        from PySide6.QtNetwork import QSslSocket
+        assert QSslSocket.supportsSsl(), 'No TLS backend bundled: in-app updates could not reach GitHub'
+        assert (Path(__file__).resolve().parent/'assets'/'icon.png').is_file(), 'App icon missing from bundle'
+        from .projects import create, export_project, import_project
+        project = create(folder/'data', 'Self-check');export_project(project, folder/'check.climbproject');assert import_project(folder/'other', folder/'check.climbproject').name == 'Self-check'
     print('Climb Studio self-check passed')
     return 0

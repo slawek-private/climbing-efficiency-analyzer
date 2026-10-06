@@ -191,6 +191,7 @@ class Window(QMainWindow):
             shortcut=QShortcut(QKeySequence(key),self);shortcut.setProperty("manual_key",key);shortcut.activated.connect(lambda cb=callback:self.shortcut(cb));self.shortcuts.append(shortcut)
         QApplication.instance().focusChanged.connect(self.focus_changed)
         if video:QTimer.singleShot(0,lambda:self.begin_video(Path(video)))
+    def labels_folder(self):return ROOT/"artifacts"/"labels"
     def shortcut(self,callback):
         # Do not steal tagging keys while the user types or adjusts fields.
         if isinstance(QApplication.focusWidget(),(QLineEdit,QSpinBox,QDoubleSpinBox,QComboBox)):
@@ -230,7 +231,7 @@ class Window(QMainWindow):
         try:
             self.reader=VideoReader(self.video_path,index);self.history=History(empty_labels(index["source"]));self.saved=copy.deepcopy(self.document())
             self.slider.setRange(0,len(self.reader.times)-1);self.frame_number=0;self.refresh();self.show_frame(0)
-            path=ROOT/"artifacts"/"labels"/(self.video_path.stem+".labels.json")
+            path=self.labels_folder()/(self.video_path.stem+".labels.json")
             if path.exists():
                 if QMessageBox.question(self,"Existing labels","Load the saved labels for this video?")==QMessageBox.StandardButton.Yes:self.read_labels(path)
         except Exception as error:self.error(error)
@@ -344,7 +345,7 @@ class Window(QMainWindow):
         if self.history:self.history.redo();self.refresh()
     def save_labels(self):
         if not self.history:return False
-        default=self.label_path or ROOT/"artifacts"/"labels"/(self.video_path.stem+".labels.json")
+        default=self.label_path or self.labels_folder()/(self.video_path.stem+".labels.json")
         path,_=QFileDialog.getSaveFileName(self,"Save manual labels",str(default),"Labels (*.labels.json)")
         if not path:return False
         try:
@@ -353,7 +354,7 @@ class Window(QMainWindow):
     def load_labels(self):
         if not self.reader:return
         if not self.allow_change():return
-        path,_=QFileDialog.getOpenFileName(self,"Load manual labels",str(ROOT/"artifacts"/"labels"),"Labels (*.labels.json *.json)")
+        path,_=QFileDialog.getOpenFileName(self,"Load manual labels",str(self.labels_folder()),"Labels (*.labels.json *.json)")
         if path:self.read_labels(Path(path))
     def read_labels(self,path):
         try:
@@ -373,7 +374,7 @@ class Window(QMainWindow):
             try:export_html([self.document()],path);self.statusBar().showMessage(f"HTML exported: {path}",10000)
             except Exception as error:self.error(error)
     def compare_reports(self):
-        folder=QFileDialog.getExistingDirectory(self,"Folder containing saved labels",str(ROOT/"artifacts"/"labels"))
+        folder=QFileDialog.getExistingDirectory(self,"Folder containing saved labels",str(self.labels_folder()))
         if not folder:return
         path,_=QFileDialog.getSaveFileName(self,"Save comparison report",str(ROOT/"artifacts"/"reports"/"manual-comparison.html"),"HTML (*.html)")
         if path:

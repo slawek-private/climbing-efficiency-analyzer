@@ -18,7 +18,10 @@ UninstallDisplayIcon={app}\Climb Studio.exe
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
+; Close a running Climb Studio during in-app updates instead of asking.
+CloseApplications=force
 LicenseFile=..\LICENSE
+SetupIconFile=icon.ico
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
@@ -33,3 +36,11 @@ Name: "{autodesktop}\Climb Studio"; Filename: "{app}\Climb Studio.exe"; Tasks: d
 
 [Run]
 Filename: "{app}\Climb Studio.exe"; Description: "{cm:LaunchProgram,Climb Studio}"; Flags: nowait postinstall skipifsilent
+; In-app updates run Setup silently with /relaunch=1 and reopen the app afterwards.
+Filename: "{app}\Climb Studio.exe"; Flags: nowait runasoriginaluser; Check: Relaunch
+
+[Code]
+function Relaunch: Boolean;
+begin
+  Result := ExpandConstant('{param:relaunch|0}') = '1';
+end;

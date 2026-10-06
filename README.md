@@ -42,6 +42,16 @@ Windows: `tools/windows/start_manual_viewer.cmd`.
 Mac: `tools/macos/start_manual_viewer.command` after [macOS setup](docs/SETUP_MACOS.md).
 macOS source support and an Apple Silicon CI job are provided; M3 Pro interactive validation remains required.
 
+Organise work in **projects** (one per event or route, e.g. “SYCC Genf”) and
+export a project, optionally with its videos, as one `.climbproject` file.
+**Import & library** shows each video's resolution, frame rate, codec and storage
+needs, and prepares smooth previews in bulk in the background; **Storage** limits
+and frees the preview cache. **Side by side** plays several attempts next to each
+other, aligned at the climb start or a named point, sized to fill the screen.
+Installed apps update themselves from GitHub Releases after checking the
+installer's SHA-256. On first launch, recording tips and a short guided tour
+explain where everything is.
+
 Mark climb start/end (fall or top), shared points, timestamped comments, and
 left/right rest, clip and chalk timers. Compare multiple athletes, view live
 charts, use precise frame stepping and a zoomable timeline, save/load labels
@@ -88,6 +98,9 @@ synthetic fixtures only, on Windows and macOS arm64.
 
 Videos, images, labels, athlete telemetry, caches, generated reports and
 historical footage-specific M0 reports remain local and ignored by Git.
+The only network request is the optional update check: a plain HTTPS request
+to the GitHub Releases API, at most daily, sending no identifiers (turn it off in
+Help › Check for updates automatically).
 Only reusable source, schemas, synthetic tests, lockfiles and setup documentation
 are committed. No telemetry, footage uploads or external assets are required.
 

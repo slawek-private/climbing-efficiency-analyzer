@@ -136,3 +136,23 @@ Clip method: before stopping a clip timer, choose **Rope to mouth** (rope pulled
 Synchronized tab: plays every video in the collection side by side on one shared clock. **Align at** chooses the moment that becomes 0 s: climb start (default) or the first arrival at a shared named point. Videos without that mark are listed and left out. Play/pause (Space), step ±1 s or ±1/30 s (arrow keys use the frame-step setting), change speed or drag the slider; each tile shows the frame at its own aligned time and notes when its video has not started yet or has ended. Frames are decoded per video in the background and drop rather than drift when decoding cannot keep up; prepare smooth previews for several 4K videos. The view reads saved and in-progress measurements but never changes them.
 
 Hardware decoding: the decoder menu offers **Apple GPU · VideoToolbox** on macOS and **NVIDIA GPU · CUDA** elsewhere. In automatic mode (no saved choice) macOS uses VideoToolbox for every H.264/HEVC file and Windows uses CUDA for 4K H.264/HEVC; failures fall back to CPU. The Synchronized tab uses the same automatic choice for each tile. Hardware frames map to the same indexed PTS frames as CPU decoding; a macOS test compares both after forward and backward seeks.
+
+## 0.18.0 · projects, library, storage, updates and guidance
+
+**Projects.** The header shows the open project; click it (or File › Projects…) to create, open, rename, export, import or delete projects. Each project keeps its own collection, labels, reports and backups; the original layout is the default project “My climbs”. Smooth previews and frame indexes are shared by checksum. *Export* writes one `.climbproject` zip: collection, labels and reports, plus the videos if chosen (stored uncompressed). *Import* checks every archive path (no absolute paths, `..` or unexpected folders) and unpacks into a new project, rewriting video and label paths to their new location. Deleting a project removes its folder only, including videos imported into it, never videos stored elsewhere.
+
+**Import & library.** Lists every video in the project with resolution (rotation applied), frame rate, codec, HDR, duration, file size and an estimate of its smooth preview size from a sampled frame. Previews are *Recommended* for 4K and for HEVC at 1080p or more. *Prepare all recommended* or *Prepare selected* queues videos one after another in the background; progress appears per row and the open video switches to its preview as soon as it is ready. Remove from project keeps files and labels. The equalising of footage to 60 fps is deliberately not offered: resampling would invent duplicated frames and change the checksum that ties labels to the original file; Side by side already aligns different frame rates by timestamp.
+
+**Storage.** File › Storage lists cached previews and frame indexes per video, with the total. A limit (default 20 GB) removes least-recently-used previews automatically after each preparation and at start-up, never the open video's. Interrupted preparations are cleaned up. Labels, reports and videos are never stored or deleted here.
+
+**Smooth preview by default.** Whenever a prepared preview exists it is used for the video workspace, playback, stepping and every Side by side tile; hover the preview controls for an explanation of what preparation does.
+
+**Side by side** (formerly Synchronized) chooses the column count that makes the videos largest for the window and their aspect ratio, with 2 px gaps; athlete and time are overlaid on each video. Full screen uses the whole display.
+
+**Hands.** Clip, rest and chalk timers sit in a LEFT HAND and a RIGHT HAND card with the timeline's colours (clip blue, rest green, chalk purple). A running timer fills its button and shows its time in orange.
+
+**Defaults.** Add videos opens the folder used last time. The point name starts as the point marked most recently.
+
+**Guidance.** On start, recording tips explain camera position, 1080p/4K, 60 fps, HDR and why YouTube, Google Photos or messaging apps re-encode footage (switch off in the dialog; Help › Recording tips reopens it). A guided tour runs once and can be replayed from Help › Show tour.
+
+**Updates.** Installed apps check GitHub Releases at most daily (Help › Check for updates automatically). *Update now* downloads the installer for this platform, verifies it against the release's `SHA256SUMS.txt`, and restarts: macOS swaps the app bundle in place after the app quits and restores the previous one if anything fails; Windows runs the installer silently and relaunches. If the app cannot replace itself (run from the disk image, no write permission, source checkout), *Download* opens the release page instead.

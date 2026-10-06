@@ -51,13 +51,22 @@ def main():
         window.history=History(docs[0]);window.saved=copy.deepcopy(docs[0]);window.draw.setValue(9);window.refresh();window.refresh_collection();window.show_frame(350);drain()
         window.resize(1450,1000);window.show();window.precision_scrubber.set_span(15)
         window.position.setText('SYNTHETIC DEMO - no people, real footage or athlete telemetry')
+        def tab(title):return next(i for i in range(window.main_tabs.count()) if window.main_tabs.tabText(i).replace('&&','&')==title)
+        def settle(predicate=lambda:True,seconds=8):
+            end=time.monotonic()+seconds
+            while not predicate() and time.monotonic()<end:app.processEvents();time.sleep(.01)
+            app.processEvents()
+        from viewer.design import apply_theme
         for theme in ('light','dark'):
-            from viewer.design import apply_theme
-            apply_theme(window,theme);window.main_tabs.setCurrentIndex(0);app.processEvents();window.grab().save(str(destination/f'workspace-{theme}.png'))
-        window.main_tabs.setCurrentIndex(1);app.processEvents();window.grab().save(str(destination/'athlete-comparison.png'))
-        window.main_tabs.setCurrentIndex(2);window.comparison_charts.focus.setCurrentText('Athlete A');app.processEvents();window.grab().save(str(destination/'comparison-charts.png'))
+            apply_theme(window,theme);window.main_tabs.setCurrentIndex(0);settle();window.grab().save(str(destination/f'workspace-{theme}.png'))
+        window.main_tabs.setCurrentIndex(tab('Import & library'));settle(lambda:len(window.library.meta)==len(window.workspace.videos));window.grab().save(str(destination/'library.png'))
+        window.main_tabs.setCurrentIndex(tab('Side by side'));settle(lambda:window.sync_view.tiles and all(t.shown is not None for t in window.sync_view.tiles))
+        window.sync_view.seek(20);settle(lambda:all(t.shown==t.wanted for t in window.sync_view.tiles));window.grab().save(str(destination/'side-by-side.png'))
+        apply_theme(window,'light')
+        window.main_tabs.setCurrentIndex(tab('Compare athletes'));settle();window.grab().save(str(destination/'athlete-comparison.png'))
+        window.main_tabs.setCurrentIndex(tab('Charts'));window.comparison_charts.focus.setCurrentText('Athlete A');settle();window.grab().save(str(destination/'comparison-charts.png'))
         window.saved=copy.deepcopy(window.document());window.close()
-    print('Captured four screenshots using synthetic data only:',destination)
+    print('Captured six screenshots using synthetic data only:',destination)
     return 0
 
 if __name__=='__main__':raise SystemExit(main())

@@ -4,7 +4,7 @@ import math
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from PySide6.QtCore import Qt, QThread, Signal, QTimer, QElapsedTimer
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton, QComboBox, QSlider, QFrame
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QComboBox, QSlider, QFrame
 from .app import ImageView
 from .labels import ROOT
 from .video import index_video, VideoReader
@@ -18,6 +18,16 @@ def anchor_seconds(document, anchor):
         return document['start']['seconds'] if document['start'] else None
     arrivals = [p['point']['seconds'] for p in document.get('checkpoints', []) if p['name'].casefold() == anchor.casefold()]
     return min(arrivals, default=None)
+
+
+def best_columns(count, width, height, aspect, gap=2):
+    """Column count that shows `count` videos of width/height `aspect` as large as possible."""
+    best, choice = -1., 1
+    for columns in range(1, max(1, count)+1):
+        rows = math.ceil(count/columns);cell_w = (width-gap*(columns-1))/columns;cell_h = (height-gap*(rows-1))/rows
+        shown_w = min(cell_w, cell_h*aspect);area = shown_w*shown_w/aspect
+        if area > best+1e-6:best, choice = area, columns
+    return choice
 
 
 def frame_at(times, seconds):
@@ -41,26 +51,38 @@ class IndexAll(QThread):
             except Exception as error:self.failed.emit(path, str(error))
 
 
-class Tile(QFrame):
+OVERLAY = 'background: rgba(6, 12, 22, 170); color: white; padding: 2px 7px; border-radius: 5px; font-size: 12px;'
+
+
+class Tile(QWidget):
+    """One video filling its cell; athlete and time are overlaid instead of taking rows."""
     def __init__(self, document, reader, anchor):
-        super().__init__();self.setObjectName('card');self.document = document;self.reader = reader;self.anchor = anchor
+        super().__init__();self.document = document;self.reader = reader;self.anchor = anchor;self.aspect = None
         self.pool = ThreadPoolExecutor(max_workers=1);self.future = None;self.wanted = 0;self.shown = None;self.pending = None
-        layout = QVBoxLayout(self);layout.setContentsMargins(8, 6, 8, 6);layout.setSpacing(4)
+        self.view = ImageView();self.view.setParent(self);self.view.setFrameShape(QFrame.Shape.NoFrame)
         result = {'failed': 'fell', 'completed': 'topped'}.get(document['outcome'], '')
-        title = QLabel(f"{document['climber']} · attempt {document['attempt']}"+(f' · {result}' if result else ''));title.setObjectName('section');layout.addWidget(title)
-        self.view = ImageView();layout.addWidget(self.view, 1)
-        self.status = QLabel();self.status.setObjectName('muted');layout.addWidget(self.status)
+        self.title = QLabel(f"{document['climber']} · {document['attempt']}"+(f' · {result}' if result else ''), self);self.status = QLabel(self)
+        for label in (self.title, self.status):label.setStyleSheet(OVERLAY);label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.title.setStyleSheet(OVERLAY+'font-weight: 700;')
+    def resizeEvent(self, event):
+        self.view.setGeometry(self.rect());self.title.adjustSize();self.title.move(6, 6);self.place_status()
+    def place_status(self):self.status.adjustSize();self.status.move(6, self.height()-self.status.height()-6)
     def seek(self, t):
         seconds = self.anchor+t;self.wanted = frame_at(self.reader.times, seconds)
-        note = ' · before video start' if seconds < 0 else ' · video ended' if seconds > self.reader.times[-1] else ''
-        self.status.setText(f'Frame {self.wanted} · video {self.reader.times[self.wanted]:.3f} s'+note)
+        note = ' · not started' if seconds < 0 else ' · ended' if seconds > self.reader.times[-1] else ''
+        self.status.setText(f'{self.reader.times[self.wanted]:.3f} s · frame {self.wanted}'+note);self.place_status()
     def pump(self, playing):
+        """Returns True when the first frame reveals the video's shape, so the layout can adapt."""
+        changed = False
         if self.future and self.future.done():
-            try:self.view.display(self.future.result());self.shown = self.pending
-            except Exception as error:self.status.setText('Cannot decode: '+str(error))
+            try:
+                rgb = self.future.result();self.view.display(rgb);self.shown = self.pending
+                if self.aspect is None:self.aspect = rgb.shape[1]/rgb.shape[0];changed = True
+            except Exception as error:self.status.setText('Cannot decode: '+str(error));self.place_status()
             self.future = None
         if self.future is None and self.wanted != self.shown:
             self.pending = self.wanted;self.future = self.pool.submit(self.reader.frame, self.wanted, not playing)
+        return changed
     def close_reader(self):
         if self.future:
             try:self.future.result()
@@ -68,23 +90,48 @@ class Tile(QFrame):
         self.pool.shutdown(wait=True);self.reader.close()
 
 
+class TileArea(QWidget):
+    """Places tiles in the grid that makes them largest for this window, centred, with 2 px gaps."""
+    GAP = 2
+    def __init__(self):super().__init__();self.tiles = []
+    def set_tiles(self, tiles):
+        self.tiles = tiles
+        for tile in tiles:tile.setParent(self);tile.show()
+        self.relayout()
+    def relayout(self):
+        if not self.tiles:return
+        known = sorted(t.aspect for t in self.tiles if t.aspect);aspect = known[len(known)//2] if known else 16/9
+        columns = best_columns(len(self.tiles), self.width(), self.height(), aspect, self.GAP);rows = math.ceil(len(self.tiles)/columns)
+        cell_w = (self.width()-self.GAP*(columns-1))/columns;cell_h = (self.height()-self.GAP*(rows-1))/rows
+        w = min(cell_w, cell_h*aspect);h = w/aspect;left = (self.width()-(w*columns+self.GAP*(columns-1)))/2;top = (self.height()-(h*rows+self.GAP*(rows-1)))/2
+        for i, tile in enumerate(self.tiles):
+            r, c = divmod(i, columns);tile.setGeometry(int(left+c*(w+self.GAP)), int(top+r*(h+self.GAP)), int(w), int(h))
+    def resizeEvent(self, event):self.relayout()
+
+
 class SyncView(QWidget):
     def __init__(self, window):
         super().__init__();self.window = window;self.tiles = [];self.indexes = {};self.worker = None
         self.t = 0.;self.lo = 0.;self.hi = 1.;self.playing = False;self.clock = QElapsedTimer();self.play_from = 0.
         self.timer = QTimer(self);self.timer.setInterval(15);self.timer.timeout.connect(self.tick)
-        layout = QVBoxLayout(self);layout.setContentsMargins(10, 10, 10, 8);layout.setSpacing(6)
+        layout = QVBoxLayout(self);layout.setContentsMargins(4, 4, 4, 4);layout.setSpacing(4)
         top = QHBoxLayout();top.addWidget(QLabel('Align at'));self.anchor = QComboBox();self.anchor.setMinimumWidth(170);self.anchor.currentIndexChanged.connect(self.rebuild);top.addWidget(self.anchor)
-        reload = QPushButton('Reload videos');reload.clicked.connect(self.load);top.addWidget(reload)
-        self.note = QLabel();self.note.setObjectName('muted');top.addWidget(self.note, 1);layout.addLayout(top)
-        self.grid = QGridLayout();self.grid.setSpacing(8);holder = QWidget();holder.setLayout(self.grid);layout.addWidget(holder, 1)
-        controls = QHBoxLayout()
+        self.anchor.setToolTip('The moment that becomes 0 s in every video: climb start, or the first arrival at a shared named point.')
+        reload = QPushButton('Reload videos');reload.setProperty('role', 'quiet');reload.clicked.connect(self.load);top.addWidget(reload)
+        self.note = QLabel();self.note.setObjectName('muted');top.addWidget(self.note, 1)
+        self.full = QPushButton('Full screen');self.full.setToolTip('Use the whole screen for the videos (Esc or click again to leave).');self.full.clicked.connect(self.toggle_full_screen);top.addWidget(self.full);layout.addLayout(top)
+        self.area = TileArea();layout.addWidget(self.area, 1)
+        controls = QHBoxLayout();controls.setSpacing(4)
         self.play_button = QPushButton('Play · Space');self.play_button.setProperty('role', 'primary');self.play_button.clicked.connect(self.toggle_play);controls.addWidget(self.play_button)
         for text, delta in (('← 1 s', -1.), ('← frame', -1/30), ('frame →', 1/30), ('1 s →', 1.)):
             b = QPushButton(text);b.clicked.connect(lambda checked=False, d=delta:self.step(d));controls.addWidget(b)
         self.speed = QComboBox();self.speed.addItems([f'{s:g}×' for s in SPEEDS]);self.speed.setCurrentIndex(2);self.speed.currentIndexChanged.connect(self.restart_clock);controls.addWidget(self.speed)
         self.slider = QSlider(Qt.Orientation.Horizontal);self.slider.valueChanged.connect(lambda ms:self.seek(ms/1000));self.slider.sliderPressed.connect(self.pause);controls.addWidget(self.slider, 1)
-        self.position = QLabel();self.position.setMinimumWidth(190);controls.addWidget(self.position);layout.addLayout(controls)
+        self.position = QLabel();self.position.setMinimumWidth(150);controls.addWidget(self.position);layout.addLayout(controls)
+    def toggle_full_screen(self):
+        if self.window.isFullScreen():self.window.showNormal()
+        else:self.window.showFullScreen()
+        self.full.setText('Exit full screen' if self.window.isFullScreen() else 'Full screen')
     def anchors(self):
         names = sorted({p['name'] for d in self.window.workspace.documents() for p in d.get('checkpoints', [])}, key=str.casefold)
         return [('Climb start', 'start')]+[(f'Point {n} · first arrival', n) for n in names]
@@ -107,7 +154,7 @@ class SyncView(QWidget):
     def clear(self):
         self.pause()
         for tile in self.tiles:tile.close_reader();tile.deleteLater()
-        self.tiles = []
+        self.tiles = [];self.area.tiles = []
     def rebuild(self):
         if self.worker and self.worker.isRunning():return
         self.clear();anchor = self.anchor.currentData() or 'start';skipped = []
@@ -120,8 +167,7 @@ class SyncView(QWidget):
             # One decoder per tile; 'auto' uses the hardware decoder (VideoToolbox / CUDA) when the file allows.
             reader = open_preview(ROOT/'artifacts'/'preview-cache', index) or VideoReader(path, index, 'auto')
             self.tiles.append(Tile(d, reader, seconds))
-        columns = max(1, math.ceil(math.sqrt(len(self.tiles))))
-        for i, tile in enumerate(self.tiles):self.grid.addWidget(tile, i//columns, i % columns)
+        self.area.set_tiles(self.tiles)
         self.lo = min((-t.anchor for t in self.tiles), default=0.);self.hi = max((t.reader.times[-1]-t.anchor for t in self.tiles), default=1.)
         self.slider.blockSignals(True);self.slider.setRange(int(self.lo*1000), int(self.hi*1000));self.slider.blockSignals(False)
         what = 'climb start' if anchor == 'start' else 'point '+anchor
@@ -150,7 +196,7 @@ class SyncView(QWidget):
             self.t = max(self.lo, min(self.hi, t))
             for tile in self.tiles:tile.seek(self.t)
             self.slider.blockSignals(True);self.slider.setValue(int(self.t*1000));self.slider.blockSignals(False);self.position.setText(f'{self.t:+.3f} s from alignment')
-        for tile in self.tiles:tile.pump(self.playing)
+        if any([tile.pump(self.playing) for tile in self.tiles]):self.area.relayout()
     def shutdown(self):
         if self.worker and self.worker.isRunning():self.worker.requestInterruption();self.worker.wait()
         self.timer.stop();self.clear()
