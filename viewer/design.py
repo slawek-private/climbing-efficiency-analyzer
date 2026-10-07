@@ -176,7 +176,7 @@ def build(w):
     for text,cb in export_items:
         if text:menu.addAction(text,cb)
         else:menu.addSeparator()
-    menu=bar.addMenu('Measurements');menu.addAction('Check completeness…',w.check_completeness);menu.addAction('Clear this athlete…',w.clear_athlete);menu.addAction('Clear measurements…',w.clear_measurements)
+    menu=bar.addMenu('Measurements');menu.addAction('Check completeness…',w.check_completeness);menu.addAction('Review clip methods',w.review_clip_methods);menu.addAction('Reassign attempt…',w.reassign_attempt);menu.addAction('Clear this athlete…',w.clear_athlete);menu.addAction('Clear measurements…',w.clear_measurements)
     menu=bar.addMenu('View');w.theme_button=menu.addAction('Dark mode',w.toggle_theme)
     from PySide6.QtGui import QActionGroup
     appearance=menu.addMenu('Appearance');w.appearance_actions={};group=QActionGroup(w);group.setExclusive(True)
@@ -206,6 +206,8 @@ def build(w):
         if text:export_menu.addAction(text,cb)
         else:export_menu.addSeparator()
     w.export_button.setMenu(export_menu);top.addWidget(w.export_button);outer.addLayout(top)
+    from .context_ui import SessionBar,AttemptNavigation,ClipReview
+    w.session_bar=SessionBar(w);outer.addWidget(w.session_bar)
     # Shown only when a newer release exists.
     w.update_banner=QFrame();w.update_banner.setObjectName('banner');banner=QHBoxLayout(w.update_banner);banner.setContentsMargins(12,6,8,6)
     w.update_text=QLabel();w.update_text.setWordWrap(True);banner.addWidget(w.update_text,1);w.update_buttons={}
@@ -222,6 +224,7 @@ def build(w):
     video=QFrame();video.setObjectName('card');v=QVBoxLayout(video);v.setContentsMargins(10,10,10,8);v.setSpacing(6)
     from .video_navigation import VideoNavigation
     w.video_navigation=VideoNavigation(w);v.addWidget(w.video_navigation)
+    w.attempt_navigation=AttemptNavigation(w);v.addWidget(w.attempt_navigation)
     w.empty_hint=QFrame();w.empty_hint.setObjectName('drop');drop=QVBoxLayout(w.empty_hint);drop.setContentsMargins(24,24,24,24);drop.addStretch()
     w.drop_title=label('Drop climbing videos here','dropTitle');w.drop_title.setAlignment(Qt.AlignmentFlag.AlignCenter);drop.addWidget(w.drop_title)
     line=QHBoxLayout();line.addStretch();w.drop_choose=button('Choose files…',w.open_video,'primary');line.addWidget(w.drop_choose);line.addWidget(button('Open project…',w.show_projects));line.addStretch();drop.addLayout(line)
@@ -261,8 +264,9 @@ def build(w):
     measurement_scroll=QScrollArea();measurement_scroll.setWidgetResizable(True);measurement_scroll.setMinimumWidth(340);measurement_scroll.setWidget(panel);split.addWidget(measurement_scroll);split.setSizes([1000,340]);w.workspace_tabs=None;w.measurement_scroll=measurement_scroll
     w.empty_panel=label('Load a video to start measuring.\n\nThe panel then follows the climb: name the athlete, mark the start, time each hand’s clips, rests and chalking, mark the end.','muted');measure.addWidget(w.empty_panel)
     w.boundary_box,box=step_card('ATHLETE · START · END')
-    line=QHBoxLayout();line.addWidget(w.climber,1);w.climber.setPlaceholderText('Athlete name');line.addWidget(label('Attempt','muted',wrap=False));w.attempt.setMaximumWidth(55);line.addWidget(w.attempt)
-    line.addWidget(menu_button('⋯',[('New attempt',w.new_attempt),('Open another attempt…',w.choose_attempt),('Set route…',w.set_route),('Coaching goal and context…',w.edit_coaching),(None,None),('Clear this athlete…',w.clear_athlete),('Clear measurements…',w.clear_measurements)],'More actions for this athlete'));box.addLayout(line)
+    line=QHBoxLayout();w.climber.setReadOnly(True);w.climber.hide();w.athlete_button=button('Assign athlete…',w.reassign_attempt);line.addWidget(w.athlete_button,1);line.addWidget(label('Attempt','muted',wrap=False));w.attempt.setMaximumWidth(55);line.addWidget(w.attempt)
+    line.addWidget(menu_button('⋯',[('New attempt',w.new_attempt),('Open another attempt…',w.choose_attempt),('Reassign athlete / session / route…',w.reassign_attempt),('Coaching goal and context…',w.edit_coaching),(None,None),('Clear this athlete…',w.clear_athlete),('Clear measurements…',w.clear_measurements)],'More actions for this attempt'));box.addLayout(line)
+    w.attempt_context=label('','muted');box.addWidget(w.attempt_context)
     line=QHBoxLayout();w.start_button=KeyButton('Mark start','S',w.set_start);w.start_button.setToolTip('Pause on the first grip, then mark the climb start (S). Press again to move it to the current frame.');line.addWidget(w.start_button,1)
     w.start_clear=button('×',lambda:w.clear_boundary('start'),'quiet');w.start_clear.setToolTip('Remove the climb start');w.start_clear.setAccessibleName('Remove climb start');line.addWidget(w.start_clear);box.addLayout(line);line=QHBoxLayout()
     w.end_button=KeyButton('Mark end','E',w.set_failure);w.end_button.setToolTip('Pause on the fall (rope weighted) or the top, then mark the end (E).');line.addWidget(w.end_button,1)
@@ -272,10 +276,7 @@ def build(w):
     for hidden in (w.start_status,w.end_status):hidden.setParent(w.boundary_box);hidden.hide()
     measure.addWidget(w.boundary_box)
     w.climb_box,box=step_card('DURING THE CLIMB')
-    line=QHBoxLayout();line.addWidget(label('Method','muted',wrap=False));w.clip_method=QComboBox()
-    for title,value in [('Not set',None),('Rope to mouth',"mouth"),('Direct · no mouth',"direct")]:w.clip_method.addItem(title,value)
-    w.clip_method.setToolTip('Captured separately for each hand when its clip timer starts. Changing this selector affects the next clip only.\nRope to mouth: rope pulled up and held in the mouth before clipping.\nDirect: moved to a favourable position and clipped without the mouth.')
-    line.addWidget(w.clip_method,1);line.addWidget(label('Draw','muted',wrap=False));w.draw.setMaximumWidth(62);w.draw.setToolTip('Number of the next quickdraw; advances after each completed clip.');line.addWidget(w.draw);box.addLayout(line)
+    line=QHBoxLayout();line.addWidget(label('Next quickdraw','muted',wrap=False));w.draw.setMaximumWidth(62);w.draw.setToolTip('Number of the next quickdraw; advances after each completed clip. Choose its method after stopping its timer.');line.addWidget(w.draw);line.addStretch();box.addLayout(line)
     # Timers: two columns (hands) × three activities, in the timeline's colours. A running tile fills and shows its time.
     w.hands_box=QWidget();grid=QGridLayout(w.hands_box);grid.setContentsMargins(0,0,0,0);grid.setHorizontalSpacing(8);grid.setVerticalSpacing(6);w.hand_timer_buttons={};w.hand_timer_cancel={};w.hand_timer_status={}
     keys={'clip':{'left':'L','right':'R'},'rest':{'left':'Q','right':'W'},'chalk':{'left':'C','right':'V'}}
@@ -288,6 +289,7 @@ def build(w):
             cancel=button('×',lambda checked=False,k=kind,h=hand:w.cancel_hand_timer(k,h),'quiet');cancel.setToolTip('Discard this running timer');cancel.setAccessibleName('Discard '+hand+' '+kind+' timer');cancel.setFixedWidth(32);line.addWidget(cancel)
             w.hand_timer_buttons[kind,hand]=control;w.hand_timer_cancel[kind,hand]=cancel;grid.addWidget(cell,row,col)
     box.addWidget(w.hands_box)
+    w.clip_review=ClipReview(w);box.addWidget(w.clip_review)
     w.point_box=QWidget();points=QVBoxLayout(w.point_box);points.setContentsMargins(0,4,0,0);points.setSpacing(6)
     line=QHBoxLayout();w.point_name.setToolTip('Point name. Starts as the point marked most recently; use the same names for every athlete.');line.addWidget(w.point_name,1)
     line.addWidget(KeyButton('Mark point','P',w.add_point))
@@ -340,7 +342,7 @@ def build(w):
     w.sync_view=SyncView(w);w.compare_tabs.addTab(w.sync_view,'Side by side');w.compare_tabs.setTabToolTip(w.compare_tabs.count()-1,'Watch several attempts next to each other, aligned at the climb start or a named point.')
     w.main_tabs.addTab(w.compare_page,'Compare')
     from .library import LibraryTab
-    w.library=LibraryTab(w);w.main_tabs.addTab(w.library,'Library')
+    w.library=LibraryTab(w);w.main_tabs.addTab(w.library,'Videos')
     def view_changed(*_):
         if w.sync_active():w.pause();w.sync_view.activate()
         else:

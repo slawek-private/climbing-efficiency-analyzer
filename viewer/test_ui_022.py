@@ -2,7 +2,7 @@
 import copy
 from PySide6.QtCore import QPoint,QPointF,Qt,QTimer
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QDialog,QListWidget,QCheckBox
+from PySide6.QtWidgets import QDialog,QTreeWidget,QCheckBox
 from viewer.test_rebuild import window
 from viewer.test_sync_view import synthetic
 from viewer.test_playback import wait_until
@@ -44,20 +44,26 @@ def test_completeness_has_explicit_scope_and_cancel_is_safe(tmp_path,monkeypatch
         dialog=app.activeModalWidget()
         for c in dialog.findChildren(QCheckBox):c.setChecked(True)
         dialog.accept()
+    w.clip_review.answer('direct')
+    answered=copy.deepcopy(w.document())
     QTimer.singleShot(0,accept);w.check_completeness();assert all(w.document()['reviewed'].values())
-    w.undo();assert w.document()==before;w.close()
+    w.undo();assert w.document()==answered;w.undo();assert w.document()==before;w.close()
 
 
 def test_exact_athlete_selection_and_shared_read_only_timelines(tmp_path,monkeypatch):
     app,w=loaded(tmp_path,monkeypatch)
     for name,start in [('Second',4),('Third',7)]:
-        path=tmp_path/(name+'.mkv');index=synthetic(path,40);d=empty_labels(index['source']);d['climber']=name;d['start']={'frame':start,'pts':index['pts'][start],'seconds':start/10};w.workspace.remember(path,d)
-    w.refresh_collection();w.show_view(w.sync_view);wait_until(app,lambda:len(w.sync_view.tiles)==3)
+        path=tmp_path/(name+'.mkv');index=synthetic(path,40);d=empty_labels(index['source']);d['climber']=name;
+        from viewer import identity as ids
+        data=w.workspace.organisation;a=ids.athlete(data,name);ids.assign(d,data,a['id'],data['sessions'][0]['id'],data['routes'][0]['id']);d['start']={'frame':start,'pts':index['pts'][start],'seconds':start/10};w.workspace.remember(path,d)
+    w.refresh_collection();w.compare_scope.intent.setCurrentIndex(1);w.compare_scope.set_selection([identity(d) for d in w.workspace.documents()]);w.refresh_comparison();w.show_view(w.sync_view);wait_until(app,lambda:len(w.sync_view.tiles)==3)
     excluded=w.compare_scope.reference.currentData();w.sync_view.seek(.6)
     def select():
-        dialog=app.activeModalWidget();listing=dialog.findChild(QListWidget)
-        for i in range(listing.count()):
-            item=listing.item(i);item.setCheckState(Qt.CheckState.Unchecked if item.data(Qt.ItemDataRole.UserRole)==excluded else Qt.CheckState.Checked)
+        dialog=app.activeModalWidget();listing=dialog.findChild(QTreeWidget)
+        for i in range(listing.topLevelItemCount()):
+            parent=listing.topLevelItem(i)
+            for j in range(parent.childCount()):
+                item=parent.child(j);item.setCheckState(0,Qt.CheckState.Unchecked if item.data(0,Qt.ItemDataRole.UserRole)==excluded else Qt.CheckState.Checked)
         dialog.accept()
     QTimer.singleShot(0,select);w.compare_scope.choose_subjects()
     assert len(w.sync_view.tiles)==2 and excluded not in {identity(t.document) for t in w.sync_view.tiles}
@@ -72,8 +78,8 @@ def test_exact_athlete_selection_and_shared_read_only_timelines(tmp_path,monkeyp
     assert all(abs(t.timeline.position-t.reader.times[t.shown])<1e-8 for t in w.sync_view.tiles)
     assert all(abs(t.timeline.bounds()[0]-t.anchor-w.sync_view.lo)<1e-8 for t in w.sync_view.tiles)
     def clear():
-        dialog=app.activeModalWidget();listing=dialog.findChild(QListWidget)
-        for i in range(listing.count()):listing.item(i).setCheckState(Qt.CheckState.Unchecked)
+        dialog=app.activeModalWidget();listing=dialog.findChild(QTreeWidget)
+        for i in range(listing.topLevelItemCount()):listing.topLevelItem(i).setCheckState(0,Qt.CheckState.Unchecked)
         dialog.accept()
     QTimer.singleShot(0,clear);w.compare_scope.choose_subjects()
     assert w.sync_view.tiles==[] and w.compare_scope.chosen()==[]

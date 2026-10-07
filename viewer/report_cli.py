@@ -46,11 +46,11 @@ def build_report(source,output,focus=None,route=''):
     output.parent.mkdir(parents=True,exist_ok=True)
     digest=hashlib.sha256(source.read_bytes()).hexdigest()
     parts=[section('Measurement source','<p>This report uses only '+escape(source.name)+'. Values derived from an HTML snapshot inherit the source’s rounding. Missing measurements remain unknown; these are human annotations, not independently validated accuracy measurements. Combined recovery is the union of dedicated rest and chalking across hands. The remainder is not measured active movement.</p>')]
-    from .reporting import read_snapshot,records,overview_html,details_html,snapshot,eligible_clip_rows,gap_peers
+    from .reporting import read_snapshot,records,overview_html,details_html,snapshot,context_html,eligible_clip_rows,gap_peers
     documents=read_snapshot(source)
     if documents is not None:
         if focus:documents.sort(key=lambda d:d['climber']!=focus)
-        parts.insert(0,overview_html(records(documents)))
+        parts.insert(0,context_html(documents)+overview_html(records(documents)))
     else:parts.insert(0,charts(overview,points,activities,section,table,focus=focus))
     if focus:
         targets=[s for s in overview if s['athlete']==focus]
@@ -60,7 +60,7 @@ def build_report(source,output,focus=None,route=''):
         own=eligible_clip_rows(activities,target)
         comparisons=[]
         for other in overview:
-            if other is target or other.get('route')!=target.get('route'):continue
+            if other is target or other.get('comparison scope',other.get('route'))!=target.get('comparison scope',target.get('route')):continue
             peer=eligible_clip_rows(activities,other)
             shared=sorted(set(own)&set(peer),key=lambda x:float(x))
             ours=sum(number(own[k]['duration seconds']) for k in shared) if shared else None

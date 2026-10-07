@@ -27,21 +27,29 @@ VALIDATOR = Draft202012Validator(SCHEMA)
 
 def empty_labels(source):
     return {"schema_version": "1.2.0", "attempt_id": uuid4().hex, "source": source,
-            "climber": Path(source["file"]).stem.split("_final_")[0].capitalize(),
-            "attempt": "1", "route": "blue", "outcome": "unknown", "start": None, "end": None,
+            "climber": "Needs assignment",
+            "attempt": "1", "route": "Needs assignment", "outcome": "unknown", "start": None, "end": None,
             "checkpoints": [], "events": [], "open_events": [], "reviewed": {k: False for k in
                 ("left_contacts", "right_contacts", "left_offwall", "right_offwall", "rests", "clips", "boundaries")}, "notes": ""}
 
 
 def validate(document):
     VALIDATOR.validate(document)
-    if any(k in document for k in ("footwork","coaching","context")) and document["schema_version"]!="1.3.0":raise ValueError("Coaching observations require schema 1.3.0")
+    if any(k in document for k in ("footwork","coaching","context")) and document["schema_version"] not in ("1.3.0","1.4.0"):raise ValueError("Coaching observations require schema 1.3.0 or later")
+    if any(k in document for k in ('assignment','clip_gaps')) and document['schema_version']!='1.4.0':raise ValueError('Identity and clip gaps require schema 1.4.0')
+    if document.get('assignment'):
+        from datetime import date
+        session=document['assignment']['session'];date.fromisoformat(session['date'])
+        if session['kind']=='competition' and (not session['event'].strip() or not session['round'].strip()):raise ValueError('Competition requires an event and round')
     source = document["source"]
     base = Fraction(source["time_base"])
     if base <= 0:
         raise ValueError("Invalid time base")
     points = [p for p in (document["start"], document["end"]) if p is not None]
     ids = set()
+    for gap in document.get('clip_gaps',[]):
+        if gap['id'] in ids:raise ValueError('Duplicate observation ID')
+        ids.add(gap['id']);points.append(gap['point'])
     for checkpoint in document.get("checkpoints", []):
         if checkpoint["id"] in ids: raise ValueError("Duplicate checkpoint ID")
         ids.add(checkpoint["id"])
@@ -58,9 +66,11 @@ def validate(document):
             raise ValueError("Contact, clip and off-wall events require a hand")
         if event["kind"] == "rest" and event["hand"] != "none" and document["schema_version"] == "1.0.0":
             raise ValueError("Hand-specific rest intervals require label schema 1.1.0")
-        if event["kind"] == "chalk" and document["schema_version"] not in ("1.2.0","1.3.0"):raise ValueError("Chalking requires schema 1.2.0")
+        if event["kind"] == "chalk" and document["schema_version"] not in ("1.2.0","1.3.0","1.4.0"):raise ValueError("Chalking requires schema 1.2.0")
         if "clip_method" in event and event["kind"] != "clip":
             raise ValueError("Clip method applies only to clip events")
+        if event.get('clip_method')=='unknown' and document['schema_version']!='1.4.0':raise ValueError('Explicit unknown clip methods require schema 1.4.0')
+        if 'clip_reason' in event and (event['kind']!='clip' or event.get('clip_method')!='unknown'):raise ValueError('Visibility reasons apply only to unknown clip methods')
         if event["kind"] == "contact" and event["target"] is None:
             raise ValueError("Contact requires a blue hold number")
     keys=[(e['kind'],e['hand']) for e in document['open_events']]
@@ -107,6 +117,9 @@ def save(document, path):
         previous=json.loads(path.read_text(encoding="utf-8"))
         backup=path.with_name(path.stem+".pre-coaching-backup.json")
         if previous["schema_version"]!="1.3.0" and not backup.exists():backup.write_bytes(path.read_bytes())
+    if path.exists() and document['schema_version']=='1.4.0':
+        previous=json.loads(path.read_text(encoding='utf-8'));backup=path.with_name(path.stem+'.pre-identity-backup.json')
+        if previous['schema_version']!='1.4.0' and not backup.exists():backup.write_bytes(path.read_bytes())
     temporary = path.with_suffix(path.suffix + ".tmp")
     temporary.write_text(json.dumps(document, indent=2), encoding="utf-8")
     temporary.replace(path)

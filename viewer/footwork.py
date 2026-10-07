@@ -6,7 +6,7 @@ KINDS={'slip':'Foot slip','both_off':'Both feet off','foot_release':'Intentional
 INTENTS=('unplanned','intentional','uncertain')
 
 def enable(document):
-    document['schema_version']='1.3.0'
+    if document['schema_version']!='1.4.0':document['schema_version']='1.3.0'
     return document.setdefault('footwork',{'definition_version':DEFINITION_VERSION,'events':[],'coverage':[],'pending':None,'fall_onset':None})
 
 def intersection(a,b):

@@ -20,6 +20,8 @@ def test_collision_rename_new_attempt_and_missing_source(tmp_path,monkeypatch):
     assert labels[0]!=labels[1] and all(load(p)['start']['frame']==2 for p in labels)
     original=w.label_path;identifier=w.document()['attempt_id'];d=copy.deepcopy(w.document());d.update(climber='Renamed athlete',attempt='99');w.commit(d);assert w.autosave()
     assert w.label_path==original and w.document()['attempt_id']==identifier
+    from PySide6.QtCore import QTimer
+    QTimer.singleShot(0,lambda:app.activeModalWidget().accept_assignments())
     w.new_attempt();assert w.document()['attempt_id']!=identifier and w.label_path!=original and load(original)['climber']=='Renamed athlete'
     assert len(w.workspace.documents())==3
     w.close();paths[0].unlink();reopened=Workspace(tmp_path/'workspace.json');assert len(reopened.videos)==2 and len(reopened.documents())==3
@@ -52,12 +54,14 @@ def test_workspace_failure_does_not_claim_saved(tmp_path,monkeypatch):
     monkeypatch.setattr(w.workspace,'save',real);assert w.autosave();w.close()
 
 
-def test_clip_method_captured_per_pending_hand_and_interval_total(tmp_path,monkeypatch):
-    app,w=window(tmp_path,monkeypatch);path=tmp_path/'a.mkv';w.video_path=path;w.index_ready(synthetic(path));w.clip_method.setCurrentIndex(w.clip_method.findData('mouth'));w.toggle_hand_timer('clip','left')
-    w.clip_method.setCurrentIndex(w.clip_method.findData('direct'));w.draw.setValue(2);w.toggle_hand_timer('clip','right');w.clip_method.setCurrentIndex(0);w.show_frame(10)
-    w.toggle_hand_timer('clip','left');w.toggle_hand_timer('clip','right');assert [(e['hand'],e['target'],e['clip_method']) for e in w.document()['events']]==[('left',1,'mouth'),('right',2,'direct')]
-    w.show_frame(1);assert '1.0 s\nEdit interval' in w.hand_timer_buttons['clip','left'].text()
-    w.close()
+def test_clip_methods_are_answered_per_completed_hand_and_interval_total(tmp_path,monkeypatch):
+    app,w=window(tmp_path,monkeypatch);path=tmp_path/'a.mkv';w.video_path=path;w.index_ready(synthetic(path));w.toggle_hand_timer('clip','left')
+    w.draw.setValue(2);w.toggle_hand_timer('clip','right');w.show_frame(10)
+    w.toggle_hand_timer('clip','left');w.toggle_hand_timer('clip','right')
+    assert all('clip_method' not in e for e in w.document()['events'])
+    for e,method in zip(w.document()['events'],('mouth','direct')):w.clip_review.event_id=e['id'];w.clip_review.answer(method)
+    assert [(e['hand'],e['target'],e['clip_method']) for e in w.document()['events']]==[('left',1,'mouth'),('right',2,'direct')]
+    w.show_frame(1);assert '1.0 s\nEdit interval' in w.hand_timer_buttons['clip','left'].text();w.close()
 
 
 def manifest():
@@ -101,9 +105,13 @@ def test_low_disk_preview_cleans_partial_file(tmp_path,monkeypatch):
 
 def test_route_selection_and_laptop_layout(tmp_path,monkeypatch):
     app,w=window(tmp_path,monkeypatch);path=tmp_path/'a.mkv';index=synthetic(path);w.video_path=path;w.index_ready(index);w.set_start();w.autosave()
-    other=empty_labels(index['source']);other.update(route='Other route',climber='Other');w.workspace.attempts.append({'path':str(path),'state':{'document':other,'frame':0,'label_path':None}});w.refresh_collection()
-    w.compare_scope.route.setCurrentText('blue');assert all(d['route']=='blue' for d in w.comparison_documents)
-    w.compare_scope.route.setCurrentText('Other route');assert len(w.comparison_documents)==1 and w.comparison_documents[0]['climber']=='Other'
+    other=empty_labels(index['source']);other.update(route='Other route',climber='Other');
+    from viewer import identity
+    data=w.workspace.organisation;athlete=identity.athlete(data,'Other');route=identity.route(data,'Other route','test version');identity.assign(other,data,athlete['id'],data['sessions'][0]['id'],route['id']);w.workspace.attempts.append({'path':str(path),'state':{'document':other,'frame':0,'label_path':None}});w.refresh_collection()
+    w.compare_scope.intent.setCurrentIndex(1);w.compare_scope.selected=None;w.compare_scope.rebuild();w.refresh_comparison()
+    w.compare_scope.route.setCurrentText('Synthetic route · set 2026-10-01');assert all(d['route']=='Synthetic route · set 2026-10-01' for d in w.comparison_documents)
+    w.compare_scope.route.setCurrentText('Other route · test version');assert not w.comparison_documents
+    w.compare_scope.set_selection([other['attempt_id']]);assert len(w.comparison_documents)==1 and w.comparison_documents[0]['climber']=='Other'
     w.show_view(w.measure_page)
     from PySide6.QtTest import QTest
     from PySide6.QtGui import QFontDatabase

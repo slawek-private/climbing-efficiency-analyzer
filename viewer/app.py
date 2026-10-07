@@ -113,14 +113,18 @@ class EventDialog(QDialog):
         self.confidence=QDoubleSpinBox();self.confidence.setRange(0,1);self.confidence.setSingleStep(.1);self.confidence.setValue(event["confidence"])
         self.notes=QLineEdit(event["notes"])
         self.clip_method=QComboBox()
-        for title,value in (("Not set",None),("Rope pulled to mouth","mouth"),("Direct · no mouth","direct")):self.clip_method.addItem(title,value)
+        for title,value in (("Answer needed",None),("Two-stage · rope in mouth","mouth"),("Direct","direct"),("Cannot tell","unknown")):self.clip_method.addItem(title,value)
         self.clip_method.setCurrentIndex(self.clip_method.findData(event.get("clip_method")))
+        self.clip_reason=QComboBox()
+        for title,value in [('Choose reason…',''),('Hands / rope hidden','hidden'),('Camera misses the method','camera'),('Visible but unclear','unclear')]:self.clip_reason.addItem(title,value)
+        self.clip_reason.setCurrentIndex(max(0,self.clip_reason.findData(event.get('clip_reason',''))));form.addRow('Reason (Cannot tell)',self.clip_reason)
         for label,control in (("Kind",self.kind),("Hand",self.hand),("Hold / quickdraw number",self.target),("Clip method",self.clip_method),("Start frame",self.start),("End frame (release / completion)",self.end),("Subjective confidence",self.confidence),("Notes",self.notes)):form.addRow(label,control)
         hint=QLabel("Frames are zero-based. Start included, end excluded.\nUse the player and current frame display to locate boundaries.");form.addRow(hint)
         buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Ok|QDialogButtonBox.StandardButton.Cancel);buttons.accepted.connect(self.accept);buttons.rejected.connect(self.reject);form.addRow(buttons)
     def result_event(self,event):
-        event={k:v for k,v in event.items() if k!="clip_method"}
+        event={k:v for k,v in event.items() if k not in ("clip_method","clip_reason")}
         if self.kind.currentText()=="clip" and self.clip_method.currentData():event["clip_method"]=self.clip_method.currentData()
+        if event.get('clip_method')=='unknown':event['clip_reason']=self.clip_reason.currentData()
         return {**event,"kind":self.kind.currentText(),"hand":self.hand.currentText(),"target":self.target.value() or None,
                 "start":self.reader.point(self.start.value()),"end":self.reader.point(self.end.value()),
                 "confidence":self.confidence.value(),"notes":self.notes.text()}

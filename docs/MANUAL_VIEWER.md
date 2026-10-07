@@ -1,5 +1,11 @@
 # Manual measurements
 
+**0.24.0:** [Athletes, sessions and clipping review](ATHLETE_SESSIONS.md) describes
+the current identity/import/comparison flows. Videos replaces Library. New
+measurements require assigned athlete/session/route; completed clip methods are
+chosen per event after stopping, superseding earlier timer-start instructions.
+Unknown with a reason is valid; missing answers remain drafts.
+
 Launch `tools/windows/start_manual_viewer.cmd`.
 
 1. Open a video and enter the athlete and attempt.

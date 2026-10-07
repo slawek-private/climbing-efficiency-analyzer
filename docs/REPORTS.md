@@ -1,5 +1,13 @@
 # Regenerating offline comparison reports
 
+**0.24.0:** exports identify session/route scope and retain athlete, session, route
+and attempt IDs. Training and competition rounds are grouped separately. Reports
+with incomplete identity, boundaries/result, timers or clipping review are marked
+DRAFT, including CLI exports. Direct/two-stage counts use only classifiable clips;
+Cannot tell and unanswered counts stay separate. Visibility gaps have reference
+frames and notes, no fabricated durations; known partial draws are excluded from
+matched timing. [Workflow and migration](ATHLETE_SESSIONS.md).
+
 The committed generator contains no private footage or fixed athlete results.
 It accepts either saved label files or an HTML export snapshot. All output is
 local, with embedded SVG charts and no network assets. Age is not used.

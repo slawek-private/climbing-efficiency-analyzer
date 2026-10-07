@@ -26,12 +26,14 @@ def export_dialog(w):
     form.addRow('Video',media);notice=QLabel('Video stays local. Portable sections are compressed review copies with original frame/PTS provenance; keep the accompanying media folder with the HTML. Including footage is optional.');notice.setWordWrap(True);form.addRow(notice)
     hands=QCheckBox('Include hand intervals and all points as video sections too');form.addRow(hands)
     anonymous=QCheckBox('Replace athlete names with Athlete 1, Athlete 2…');form.addRow(anonymous)
-    note=QLabel('Anonymous names do not redact people visible in footage or names written in notes.');note.setWordWrap(True);note.setObjectName('muted');form.addRow(note)
+    note=QLabel('Anonymous names do not redact people visible in footage or names written in notes or session titles.');note.setWordWrap(True);note.setObjectName('muted');form.addRow(note)
     pdf=QCheckBox('Also create a printable PDF');pdf.setChecked(True);form.addRow(pdf)
     buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Save|QDialogButtonBox.StandardButton.Cancel);buttons.accepted.connect(dialog.accept);buttons.rejected.connect(dialog.reject);form.addRow(buttons)
     if dialog.exec()!=QDialog.DialogCode.Accepted:return
     documents=[current] if scope.currentData()=='current' and current else selected
     if not documents:return w.error('Choose at least one attempt.')
+    from .context_ui import report_permission
+    if not report_permission(w,documents):return
     filename,_=QFileDialog.getSaveFileName(w,'Save private coaching review',str(w.project.reports/'coaching-review.html'),'HTML (*.html)')
     if not filename:return
     sources={}

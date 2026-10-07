@@ -42,12 +42,19 @@ def main():
         drain()
         def point(seconds):return window.reader.point(round(seconds*10))
         docs=[]
+        from viewer import identity
+        organisation=window.workspace.organisation
+        session=identity.session(organisation,'Team practice',day='2026-10-07',team='Demo team',goal='Precise foot contacts through the roof')
+        route=identity.route(organisation,'Demonstration route','set 1 Oct 2026')
+        window.workspace.session_id=session['id']
         for i,name in enumerate(('Athlete A','Athlete B','Athlete C')):
             path=root/f'demo-{i+1}.mkv';shutil.copyfile(video,path)
             doc=empty_labels({**index['source'],'file':path.name});doc.update(climber=name,attempt=str(i+1),start=point(1),end=point(60+i),outcome='completed' if i==1 else 'failed')
+            athlete=identity.athlete(organisation,name,teams=['Demo team']);identity.assign(doc,organisation,athlete['id'],session['id'],route['id'])
             for draw,start in enumerate((4,9,15,21,28,39,46,55),1):
                 pending={'kind':'clip','hand':'left' if (draw+i)%3==0 else 'right','target':draw,'start':point(start),'confidence':1,'notes':'Synthetic demo event'}
                 doc['events'].append(make_event(pending,point(start+1.5+i*.4)))
+                if draw<8:doc['events'][-1]['clip_method']='mouth' if draw%3==0 else 'direct'
             for kind,hand,start,end in [('rest','left',34,37+i),('chalk','left',35,36),('rest','right',49,50+i)]:
                 doc['events'].append(make_event({'kind':kind,'hand':hand,'target':None,'start':point(start),'confidence':1,'notes':'Synthetic demo event'},point(end)))
             track=enable(doc);doc['coaching']={'goal':'Keep precise foot contacts through the roof','reflection':'I rushed the right-foot placement before moving','action':'Pause, choose the foothold, then commit','retest':'Repeat the roof with the same camera position'};doc['context']={'discipline':'Lead','grade':'Fictional route','wall_angle':'Overhanging','familiarity':'Practised'}
@@ -73,13 +80,13 @@ def main():
             apply_theme(window,theme);window.show_view(window.measure_page);settle();window.grab().save(str(destination/f'workspace-{theme}.png'))
         window.events_body.show();window.events_toggle.setText('▾  Events');settle();window.measurement_scroll.verticalScrollBar().setValue(window.measurement_scroll.verticalScrollBar().maximum());settle();window.grab().save(str(destination/'workspace-events.png'));window.events_body.hide()
         window.show_view(window.library);settle(lambda:len(window.library.meta)==len(window.workspace.videos));window.grab().save(str(destination/'library.png'))
-        window.compare_scope.set_selection(d['attempt_id'] for d in docs[:2])
+        window.compare_scope.intent.setCurrentIndex(1);window.compare_scope.set_selection(d['attempt_id'] for d in docs[:2])
         window.show_view(window.sync_view);settle(lambda:window.sync_view.tiles and all(t.shown is not None for t in window.sync_view.tiles))
         window.sync_view.seek(20);settle(lambda:all(t.shown==t.wanted for t in window.sync_view.tiles));window.grab().save(str(destination/'side-by-side.png'))
         apply_theme(window,'light')
         window.compare_scope.point.setCurrentText('REST');window.show_view(window.comparison_page);window.comparison_table.selectRow(0);settle();window.grab().save(str(destination/'athlete-comparison.png'))
         window.show_view(window.comparison_charts);window.compare_scope.point.setCurrentText('REST');settle();window.grab().save(str(destination/'comparison-charts.png'))
-        qa=repository/'artifacts'/'reporting-qa-0.23.0';qa.mkdir(parents=True,exist_ok=True)
+        qa=repository/'artifacts'/'reporting-qa-0.24.0';qa.mkdir(parents=True,exist_ok=True)
         apply_theme(window,'dark');settle();window.grab().save(str(qa/'overview-dark.png'))
         window.resize(1024,768);settle();window.grab().save(str(qa/'overview-laptop.png'));window.resize(1280,800);apply_theme(window,'light')
         window.show_view(window.pattern_dashboard);window.pattern_dashboard.tabs.setCurrentIndex(5);settle();window.grab().save(str(destination/'time-allocation.png'))
@@ -90,7 +97,7 @@ def main():
         for e in example['events']:e['notes']=''
         example['footwork']['fall_onset']=None;example['footwork']['coverage']=[{'id':'review-a','start':point(0),'end':point(10),'state':'reviewed'},{'id':'hidden','start':point(10),'end':point(16),'state':'obscured'},{'id':'review-b','start':point(16),'end':point(60),'state':'reviewed'}]
         event=example['footwork']['events'][0];example['footwork']['events'] += [dict(event,id='left-slip',limb='left',start=point(18.2),observation='Left foot visibly loses contact'),dict(event,id='uncertain-slip',limb='uncertain',start=point(12.3),status='uncertain',intent='uncertain',observation='Foot hidden by the wall',interpretation='',action=''),dict(example['footwork']['events'][1],id='intentional-off',start=point(27),end=point(28.6),intent='intentional',observation='Deliberate dynamic foot release')]
-        target=repository/'artifacts'/'coaching-preview-0.23.0'/'coaching-review.html'
+        target=repository/'artifacts'/'coaching-preview-0.24.0'/'coaching-review.html'
         export_report([example],target,sources={example['attempt_id']:root/'demo-1.mkv'},media='clips',pdf=True)
         print('Fictional coaching example:',target)
         window.saved=copy.deepcopy(window.document());window.close()

@@ -111,6 +111,10 @@ class PrecisionScrubber(QWidget):
         if selected:
             name={'clip':'Clip','rest':'Rest','chalk':'Chalk','contact':'Hold contact','offwall':'Hand away','slip':'Foot slip','foot_release':'Intentional foot release','both_off':'Both feet off'}[selected['kind']];limb=selected.get('hand',selected.get('limb',''))
             end=selected.get('end');duration=f" · {end['seconds']-selected['start']['seconds']:.3f} s" if end else ''
+            if selected['kind']=='clip':
+                from .identity import clip_answered,timing_visible
+                name+=' · '+({'mouth':'Two-stage · rope in mouth','direct':'Direct','unknown':'Cannot tell'}.get(selected.get('clip_method'),'Answer needed') if clip_answered(selected) else 'Answer needed')
+                if not timing_visible(self.document,selected):duration=' · visibility gap: timing excluded'
             return f"{limb.capitalize()} · {name} · video {selected['start']['seconds']:.3f} s"+duration+' · '+selected.get('intent','')+' '+selected.get('status','')
         d=self.document or {}
         for c in d.get('footwork',{}).get('coverage',[]):

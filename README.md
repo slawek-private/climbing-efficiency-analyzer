@@ -46,7 +46,8 @@ Three places: **Video analysis** for one climb, **Compare** climbs (overview, de
 side by side) and **Library**. Measurements save automatically; drop videos onto
 the window to start.
 
-Organise work in **projects** (one per event or route, e.g. “SYCC Genf”) and
+Organise work in **projects**, with explicit **Training** or **Competition** sessions,
+stable athletes and route versions, and
 export a project, optionally with its videos, as one `.climbproject` file.
 **Library** shows each video's resolution, frame rate, codec and storage
 needs, and prepares smooth previews in bulk in the background; **Storage** limits
@@ -56,6 +57,11 @@ Installed apps update themselves from GitHub Releases after checking the
 installer's SHA-256 and release compatibility manifest (OS, architecture and
 supported source versions). Downloads wait for an explicit restart. Recording
 tips and the guided tour are available from Help, when you want them.
+
+**0.24.0:** required athlete/session/route assignment, clear training and competition
+flows, athlete history and per-event clipping decisions with reminders.
+Missing clips and unknown methods stay distinct; incomplete exports are marked drafts.
+See [the workflow guide](docs/ATHLETE_SESSIONS.md) and [release notes](docs/RELEASE_0.24.0.md).
 
 **0.23.0:** one compact comparison overview with dashboards beneath the summary
 table, coverage-aware footwork, and clearer interactive HTML/PDF reports. Athlete,

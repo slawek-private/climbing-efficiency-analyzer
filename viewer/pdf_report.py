@@ -45,6 +45,10 @@ def export_pdf(source,output,focus=None,route=''):
     documents=read_snapshot(source)
     data=records(documents) if documents is not None else legacy_records(overview,points,activities)
     if focus:data.sort(key=lambda r:not r['name'].startswith(focus+' · '))
+    from . import identity as identities
+    if documents:
+        paragraph('DRAFT · incomplete review' if any(identities.review_issues(d) for d in documents) else 'Reviewed boundaries and clipping','Heading1')
+        for d in documents:paragraph(text(d['climber']+' · '+identities.context(d)));paragraph(text(identities.method_summary(d)))
     paragraph('Climb comparison','Title');paragraph(text(route or source.stem))
     pdf_overview(story,data,width,styles)
     story.append(PageBreak());heading('Shared point arrivals')
@@ -58,7 +62,7 @@ def export_pdf(source,output,focus=None,route=''):
         story.append(PageBreak());heading(f'{focus}: clips compared with peers')
         cliprows=[]
         for a in own:
-            peers=[number(p[a['quickdraw']]['duration seconds']) for other in overview if other is not target and other.get('route')==target.get('route') and a['quickdraw'] in (p:=eligible_clip_rows(activities,other))]
+            peers=[number(p[a['quickdraw']]['duration seconds']) for other in overview if other is not target and other.get('comparison scope',other.get('route'))==target.get('comparison scope',target.get('route')) and a['quickdraw'] in (p:=eligible_clip_rows(activities,other))]
             duration=number(a['duration seconds']);med=median(peers) if peers else None
             cliprows.append([a['quickdraw'],a['hand'],duration,med,duration-med if med is not None else None,len(peers)])
         grid(['Draw','Hand','Focus duration s','Peer median s','Difference s','Matched peers'],cliprows)

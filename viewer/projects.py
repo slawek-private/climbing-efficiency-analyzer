@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushB
                                QHeaderView, QInputDialog, QMessageBox, QFileDialog, QProgressDialog, QCheckBox)
 from .version import __version__
 
-FORMAT = 1
+FORMAT = 2
 EXTENSION = '.climbproject'
 TOP_LEVEL = {'project.json', 'workspace.json', 'labels', 'reports', 'videos'}
 
@@ -36,7 +36,7 @@ class Project:
     def name(self):return self.meta().get('name') or ('My climbs' if self.legacy else self.folder.name)
     def save_meta(self, **values):
         data = {'format': FORMAT, 'name': self.name, **self.meta(), **values};self.folder.mkdir(parents=True, exist_ok=True)
-        (self.folder/'project.json').write_text(json.dumps(data, indent=2), encoding='utf-8')
+        target=self.folder/'project.json';temporary=target.with_suffix('.tmp');temporary.write_text(json.dumps(data, indent=2), encoding='utf-8');temporary.replace(target)
     def touch(self):self.save_meta(last_opened=time.time())
     def workspace(self):
         try:return json.loads(self.workspace_file.read_text(encoding='utf-8'))
@@ -97,8 +97,9 @@ def export_project(project, target, include_videos=True, progress=lambda text:No
             for path, state in data.get('states', {}).items():
                 label = state.get('label_path');states[videos.get(path, path)] = {**state, 'label_path': labels.get(str(Path(label).resolve()), label) if label else None}
             attempts=[{'path':videos.get(e['path'],e['path']),'state':{**e['state'],'label_path':labels.get(str(Path(e['state']['label_path']).resolve()),e['state']['label_path']) if e['state'].get('label_path') else None}} for e in data.get('attempts',[])]
-            archive.writestr('workspace.json', json.dumps({**data,'attempts':attempts, 'videos': [videos[p] for p in data.get('videos', [])], 'states': states}, indent=2))
-            archive.writestr('project.json', json.dumps({'format': FORMAT, 'name': project.name, 'exported_with': __version__, 'exported': time.time()}, indent=2))
+            assignments={videos.get(p,p):a for p,a in data.get('assignments',{}).items()}
+            archive.writestr('workspace.json', json.dumps({**data,'assignments':assignments,'attempts':attempts, 'videos': [videos[p] for p in data.get('videos', [])], 'states': states}, indent=2))
+            archive.writestr('project.json', json.dumps({**project.meta(),'format': FORMAT, 'name': project.name, 'exported_with': __version__, 'exported': time.time()}, indent=2))
         temporary.replace(target);return target
     finally:temporary.unlink(missing_ok=True)
 
@@ -116,7 +117,7 @@ def import_project(root, source, progress=lambda text:None, cancelled=lambda:Fal
     with zipfile.ZipFile(source) as archive:
         members = safe_members(archive)
         meta = json.loads(archive.read('project.json'));data = json.loads(archive.read('workspace.json'))
-        if meta.get('format') != FORMAT:raise ValueError('Unsupported project file version')
+        if meta.get('format') not in (1,FORMAT):raise ValueError('Unsupported project file version')
         project = create(root, meta.get('name', Path(source).stem));base = project.folder.resolve()
         try:
             for info in members:
@@ -131,7 +132,11 @@ def import_project(root, source, progress=lambda text:None, cancelled=lambda:Fal
     def local(path):return str((project.folder/path).resolve()) if path and not Path(path).is_absolute() else path
     states = {local(p):{**s, 'label_path': local(s.get('label_path'))} for p, s in data.get('states', {}).items()}
     attempts=[{'path':local(e['path']),'state':{**e['state'],'label_path':local(e['state'].get('label_path'))}} for e in data.get('attempts',[])]
-    project.workspace_file.write_text(json.dumps({**data,'attempts':attempts, 'videos': [local(p) for p in data.get('videos', [])], 'states': states}, indent=2), encoding='utf-8')
+    project.workspace_file.write_text(json.dumps({**data,'assignments':{local(p):a for p,a in data.get('assignments',{}).items()},'attempts':attempts, 'videos': [local(p) for p in data.get('videos', [])], 'states': states}, indent=2), encoding='utf-8')
+    from .workspace import Workspace
+    restored=Workspace(project.workspace_file)
+    if restored.load_error:
+        shutil.rmtree(project.folder,ignore_errors=True);raise ValueError('Invalid project workspace: '+restored.load_error)
     return project
 
 

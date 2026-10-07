@@ -9,11 +9,20 @@ from viewer.test_sync_view import synthetic
 from viewer.video import index_video
 from viewer.workspace import Workspace
 
-def window(tmp_path,monkeypatch):
+def window(tmp_path,monkeypatch,assigned=True):
     import viewer.simple as simple,viewer.sync_view as sync
     monkeypatch.setattr(simple,'ROOT',tmp_path);monkeypatch.setattr(sync,'ROOT',tmp_path)
     settings=QSettings(str(tmp_path/'settings.ini'),QSettings.Format.IniFormat);monkeypatch.setattr(simple,'QSettings',lambda *a:settings)
     app=QApplication.instance() or QApplication([]);app.setStyle('Fusion');w=simple.Window();w.workspace=Workspace(tmp_path/'workspace.json');w.async_decode=False;w.resize(1300,900);w.show();app.processEvents()
+    if assigned:
+        from viewer import identity
+        def fixture_labels(source):
+            data=w.workspace.organisation
+            if not data['athletes']:identity.athlete(data,'Test athlete')
+            if not data['sessions']:identity.session(data,'Synthetic training',day='2026-10-07')
+            if not data['routes']:identity.route(data,'Synthetic route','set 2026-10-01')
+            d=empty_labels(source);identity.assign(d,data,data['athletes'][0]['id'],data['sessions'][0]['id'],data['routes'][0]['id']);return d
+        monkeypatch.setattr(simple,'empty_labels',fixture_labels)
     return app,w
 
 def test_empty_state_then_loaded_video_and_autosave_without_dialog(tmp_path,monkeypatch):
@@ -53,7 +62,7 @@ def test_leaderboard_gaps_sorting_and_detail(tmp_path,monkeypatch):
     assert cells['Ben'][3]=='2.00 s · -1.00 s vs ref' and cells['Anna'][3]=='3.00 s · +0.00 s vs ref'
     assert cells['Anna'][4]=='Unknown' and cells['Ben'][4]=='0.40 s · Partial annotations' and cells['Cleo'][5]=='Unknown'
     t.sortItems(3);assert [w.comparison_summary(r)['athlete'] for r in range(3)]==['Ben','Cleo','Anna']
-    t.selectRow(2);assert w.comparison_activity_table.rowCount()==1 and w.comparison_activity_table.item(0,3).text()=='Rope to mouth' and 'Anna' in w.comparison_detail_title.text()
+    t.selectRow(2);assert w.comparison_activity_table.rowCount()==1 and w.comparison_activity_table.item(0,3).text()=='Two-stage · rope in mouth' and 'Anna' in w.comparison_detail_title.text()
     w.show_view(w.comparison_charts);app.processEvents()
     assert w.compare_tabs.currentWidget() is w.comparison_page and w.compare_tabs.tabText(0)=='Overview'
     assert not w.comparison_activity_table.isVisible()

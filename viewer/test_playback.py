@@ -9,6 +9,15 @@ from viewer.workspace import Workspace
 from viewer.video import index_video
 from viewer.labels import load,save
 
+def seed_assignment(w):
+    import copy
+    from viewer import identity
+    data=w.workspace.organisation
+    if not data['athletes']:identity.athlete(data,'Synthetic athlete')
+    if not data['sessions']:identity.session(data,'Training',day='2026-10-07')
+    if not data['routes']:identity.route(data,'Test route','version 1')
+    d=copy.deepcopy(w.document());identity.assign(d,data,data['athletes'][0]['id'],data['sessions'][0]['id'],data['routes'][0]['id']);w.commit(d)
+
 def wait_until(app,predicate,timeout=4):
     deadline=time.monotonic()+timeout
     while not predicate() and time.monotonic()<deadline:app.processEvents();time.sleep(.005)
@@ -32,7 +41,7 @@ def test_real_play_button_end_replay_and_confirmed_reset(tmp_path,monkeypatch):
     QTest.mouseClick(w.play_button,Qt.MouseButton.LeftButton);wait_until(app,lambda:w.frame_number==19 and not w.playing)
     QTest.mouseClick(w.play_button,Qt.MouseButton.LeftButton);wait_until(app,lambda:w.playing and w.frame_number<19)
     w.pause();wait_until(app,lambda:w.decode_future is None)
-    w.show_frame(0);wait_until(app,lambda:w.decode_future is None);w.set_start();w.show_frame(5);wait_until(app,lambda:w.decode_future is None);w.point_name.setText('A');w.add_point();w.show_frame(10);wait_until(app,lambda:w.decode_future is None);monkeypatch.setattr(w,'choose_climb_outcome',lambda:'failed');w.set_failure()
+    w.show_frame(0);wait_until(app,lambda:w.decode_future is None);seed_assignment(w);w.set_start();w.show_frame(5);wait_until(app,lambda:w.decode_future is None);w.point_name.setText('A');w.add_point();w.show_frame(10);wait_until(app,lambda:w.decode_future is None);monkeypatch.setattr(w,'choose_climb_outcome',lambda:'failed');w.set_failure()
     assert w.document()['outcome']=='failed'
     end=w.document()['end'].copy()
     monkeypatch.setattr(w,'choose_climb_outcome',lambda:'completed');w.edit_climb_outcome()
@@ -72,21 +81,21 @@ def test_four_timer_shortcuts_buttons_and_typing(tmp_path,monkeypatch):
             for packet in stream.encode(frame):out.mux(packet)
         for packet in stream.encode():out.mux(packet)
     app=QApplication.instance() or QApplication([]);w=Window();w.workspace=Workspace(tmp_path/'workspace.json');w.async_decode=False;w.video_path=path;w.index_ready(index_video(path));w.show();app.processEvents();w.image.setFocus();app.processEvents()
-    w.set_start()
+    seed_assignment(w);w.set_start()
     for key in (Qt.Key.Key_L,Qt.Key.Key_R,Qt.Key.Key_Q,Qt.Key.Key_W,Qt.Key.Key_C,Qt.Key.Key_V):QTest.keyClick(w,key)
     assert len(w.document()['open_events'])==6
     assert set((e['kind'],e['hand']) for e in w.document()['open_events'])=={('clip','left'),('clip','right'),('rest','left'),('rest','right'),('chalk','left'),('chalk','right')}
     assert all(b.property('role')=='stop' and w.hand_timer_cancel[k].isVisibleTo(w) for k,b in w.hand_timer_buttons.items())
-    w.show_frame(5);w.clip_method.setCurrentIndex(w.clip_method.findData('mouth'))
+    w.show_frame(5)
     for button in w.hand_timer_buttons.values():QTest.mouseClick(button,Qt.MouseButton.LeftButton)
     assert not w.document()['open_events'] and len(w.document()['events'])==6
     clips={e['hand']:e.get('clip_method') for e in w.document()['events'] if e['kind']=='clip'}
-    assert clips=={'left':None,'right':None} and w.clip_method.currentData() is None
+    assert clips=={'left':None,'right':None}
     assert all(b.property('role')=='start' and not w.hand_timer_cancel[k].isVisibleTo(w) for k,b in w.hand_timer_buttons.items())
     assert w.draw.value()==2 and all(e['target']==1 for e in w.document()['events'] if e['kind']=='clip')
     initial=w.theme;w.toggle_theme();assert w.theme!=initial and w.precision_scrubber.dark==(w.theme=='dark');w.toggle_theme();assert w.theme==initial
     w.events_body.show();app.processEvents();assert w.table.isVisible() and w.workspace_tabs is None
-    w.climber.setFocus();w.climber.selectAll();app.processEvents();QTest.keyClicks(w.climber,'Lara QW');assert w.climber.text()=='Lara QW' and not w.document()['open_events']
+    before_name=w.climber.text();w.attempt.setFocus();w.attempt.selectAll();app.processEvents();QTest.keyClicks(w.attempt,'2');assert w.climber.text()==before_name and not w.document()['open_events']
     w.image.setFocus();app.processEvents();w.show_frame(10);monkeypatch.setattr(w,'choose_climb_outcome',lambda:'failed');w.set_failure()
     from PySide6.QtCore import QSettings
     w.settings=QSettings(str(tmp_path/'settings.ini'),QSettings.Format.IniFormat);w.frame_step.setValue(5)

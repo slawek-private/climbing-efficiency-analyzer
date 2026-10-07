@@ -6,6 +6,7 @@ from html import escape
 import json
 from .labels import rest_breakdown, length
 from .footwork import metrics, intersection
+from . import identity
 
 HEADERS=['Athlete / attempt','Result','Climb time','Checkpoint arrival','Recorded recovery','Footwork checked']
 LIMITS='Missing is unknown. Recovery merges rest and chalking once; other time is unclassified. Footwork counts apply only to checked, visible footage. Timing does not explain a fall.'
@@ -24,9 +25,10 @@ def records(documents):
             arrivals[name]=hits[0] if len(hits)==1 else None
         pending={e['kind'] for e in d['open_events']}
         clips={}
+        gaps={g['target'] for g in d.get('clip_gaps',[]) if g['target'] is not None}
         for draw in {e['target'] for e in d['events'] if e['kind']=='clip' and e['target'] is not None}:
             hits=[e for e in d['events'] if e['kind']=='clip' and e['target']==draw and a is not None and b is not None and e['start']['seconds']>=a and e['end']['seconds']<=b]
-            clips[str(draw)]=hits[0]['end']['seconds']-hits[0]['start']['seconds'] if len(hits)==1 and 'clip' not in pending else None
+            clips[str(draw)]=hits[0]['end']['seconds']-hits[0]['start']['seconds'] if len(hits)==1 and 'clip' not in pending and draw not in gaps else None
         recovery=rest_breakdown(d)['total_rest_marked_seconds'] if not pending&{'rest','chalk'} else None
         track=d.get('footwork');m=metrics(d)
         checked=m['reviewed_seconds'] if track else None
@@ -36,7 +38,20 @@ def records(documents):
             hidden=length(intersection([(a,stop)],[(c['start']['seconds'],c['end']['seconds']) for c in track['coverage'] if c['state']=='obscured']))
             coverage=[dict(start=max(a,c['start']['seconds'])-a,end=min(stop,c['end']['seconds'])-a,state=c['state']) for c in track['coverage'] if min(stop,c['end']['seconds'])>max(a,c['start']['seconds'])]
         result.append(dict(key=str(i),name=d['climber']+' · '+d['attempt'],route=d['route'],result={'completed':'Topped','failed':'Fell','unknown':'Unknown'}.get(d['outcome'],d['outcome']),climb=duration,arrivals=arrivals,clips=clips,recovery=recovery,recovery_state='Reviewed' if d['reviewed'].get('rests') and d['reviewed'].get('boundaries') and not pending&{'rest','chalk'} else 'Partial annotations',checked=checked,hidden=hidden,unreviewed=max(0,m['analysis_seconds']-checked-hidden) if checked is not None and hidden is not None and m['analysis_seconds'] is not None else None,slips=m['confirmed_slips'] if track else None,candidates=m['candidate_slips'] if track else None,unplanned=m['unplanned_seconds'] if track else None,intentional=m['intentional_seconds'] if track else None,coverage=coverage,analysis=m['analysis_seconds'],foot_state='Fall start missing' if track and m['fall_review_needed'] else 'Not checked' if not checked else 'Checked footage only'))
+        if identity.assigned(d):
+            s=d['assignment']['session'];result[-1].update(route=identity.report_scope(d),route_label='Training / '+d['route'] if s['kind']=='training' else identity.context(d))
+            result[-1]['name']+=' · '+s['name']+' · '+s['date']
     return result
+
+def context_html(documents):
+    """Context and completeness are visible in every export, including legacy drafts."""
+    draft=any(identity.review_issues(d) for d in documents)
+    rows=[]
+    for d in documents:
+        status='Draft: '+', '.join(identity.review_issues(d)) if identity.review_issues(d) else 'Reviewed boundaries and clipping'
+        rows.append('<tr><td>'+escape(d['climber']+' · attempt '+d['attempt'])+'</td><td>'+escape(identity.context(d))+'</td><td>'+escape(status)+'</td><td>'+escape(identity.method_summary(d))+'</td></tr>')
+    gaps=''.join('<p>'+escape(d['climber']+f" · QD {g['target'] or '?'} · {g['visibility']} at source frame {g['point']['frame']} / PTS {g['point']['pts']}: "+g['notes'])+'</p>' for d in documents for g in d.get('clip_gaps',[]))
+    return '<section><h2>'+('DRAFT · incomplete review' if draft else 'Reviewed boundaries & clipping')+'</h2><p>Training and competition context belongs to each attempt. Annotation timing is not an official result. Cannot tell is an explicit answer; missed clips have no invented duration.</p><div class="scroll"><table><thead><tr><th>Attempt</th><th>Session / route version</th><th>Review</th><th>Clip methods</th></tr></thead><tbody>'+''.join(rows)+'</tbody></table></div>'+('<details><summary>Clip visibility gaps</summary>'+gaps+'</details>' if gaps else '')+'</section>'
 
 def checkpoint_for(data):
     return next(iter(sorted({n for r in data for n in r['arrivals'] if n!='Climb start'})), 'Climb start')
@@ -137,7 +152,7 @@ function update(){
  for(const r of ordered){const row=rows.find(row=>row.dataset.key===r.key);row.parentElement.appendChild(row);}
  for(const label of choices)label.parentElement.hidden=records.find(r=>r.key===label.dataset.attempt).route!==route.value;
  root.querySelector('[data-empty]').hidden=chosen.length>0;
- root.querySelector('[data-scope-label]').textContent=chosen.length+' attempts · '+route.value+' · reference '+(ordered[0]?.name||'none')+' · checkpoint '+point.value;
+ root.querySelector('[data-scope-label]').textContent=chosen.length+' attempts · '+(chosen[0]?.route_label||route.value)+' · reference '+(ordered[0]?.name||'none')+' · checkpoint '+point.value;
  for(const box of root.querySelectorAll('[data-chart]')){
   box.hidden=box.dataset.point!==undefined&&box.dataset.point!==point.value||box.dataset.draw!==undefined&&!visibleDraws.includes(box.dataset.draw);
   const svg=box.querySelector('svg'),step=Number(svg.dataset.step),groups=[...svg.querySelectorAll('g[data-key]')];
@@ -180,7 +195,7 @@ def overview_html(data,checkpoint=None):
     targets=sorted({n for r in data for n in r['clips']},key=float)
     clip_html=''.join(chart(spec,'data-draw="'+escape(draw,quote=True)+'"'+(' hidden' if i>=2 else '')) for i,(draw,spec) in enumerate(zip(targets,chart_specs(data,checkpoint,targets)[1]))) or '<p>No matched clip annotations.</p>'
     payload=json.dumps(data,ensure_ascii=True).replace('<','\\u003c')
-    return '<section id="comparisonOverview" class="report-overview"><h2>Comparison overview</h2><p class="chart-note">'+LIMITS+'</p><div class="scope"><label>Route <select data-route>'+options([(r,r) for r in dict.fromkeys(r['route'] for r in data)])+'</select></label><label>Reference <select data-reference>'+options([(r['key'],r['name']) for r in data])+'</select></label><label>Checkpoint <select data-checkpoint>'+options([(n,n) for n in sorted({n for r in data for n in r['arrivals']})])+'</select></label></div><div class="attempt-choices">'+choices+'</div><p class="chart-note" data-scope-label aria-live="polite"></p><p class="empty" data-empty hidden>No attempts selected. Check an athlete above.</p><div class="scroll"><table><thead><tr>'+head+'</tr></thead><tbody>'+body+'</tbody></table></div><div class="dashboard-grid"><article>'+arrivals+'</article><article><label>Quickdraws <select data-draw-page><option value="0">First two draws</option></select></label>'+clip_html+'</article><article>'+chart(recovery)+'</article><article>'+chart(foot)+'</article></div></section><script id="overviewData" type="application/json">'+payload+'</script><script>'+OVERVIEW_SCRIPT+'</script>'
+    return '<section id="comparisonOverview" class="report-overview"><h2>Comparison overview</h2><p class="chart-note">'+LIMITS+'</p><div class="scope"><label>Route <select data-route>'+options(list({r['route']:r.get('route_label',r['route']) for r in data}.items()))+'</select></label><label>Reference <select data-reference>'+options([(r['key'],r['name']) for r in data])+'</select></label><label>Checkpoint <select data-checkpoint>'+options([(n,n) for n in sorted({n for r in data for n in r['arrivals']})])+'</select></label></div><div class="attempt-choices">'+choices+'</div><p class="chart-note" data-scope-label aria-live="polite"></p><p class="empty" data-empty hidden>No attempts selected. Check an athlete above.</p><div class="scroll"><table><thead><tr>'+head+'</tr></thead><tbody>'+body+'</tbody></table></div><div class="dashboard-grid"><article>'+arrivals+'</article><article><label>Quickdraws <select data-draw-page><option value="0">First two draws</option></select></label>'+clip_html+'</article><article>'+chart(recovery)+'</article><article>'+chart(foot)+'</article></div></section><script id="overviewData" type="application/json">'+payload+'</script><script>'+OVERVIEW_SCRIPT+'</script>'
 
 def legacy_records(overview,points,activities):
     """Old HTML snapshots cannot supply review flags or footwork: keep them unknown."""
@@ -247,14 +262,14 @@ def details_html(documents):
         for name in names:
             spec=chart_specs(chosen,name)[0]
             body+='<h3>'+escape(name)+'</h3>'+table(['Athlete / attempt','Arrival s','State'],[[r['name'],shown(r['value']),r['state']] for r in spec['rows']])+svg_chart(spec)[0]
-        parts.append('<section><h2>Checkpoint timing · '+escape(route)+'</h2>'+body+'</section>')
+        parts.append('<section><h2>Checkpoint timing · '+escape(chosen[0].get('route_label',route))+'</h2>'+body+'</section>')
     for route in dict.fromkeys(r['route'] for r in data):
         chosen=[r for r in data if r['route']==route];draws=sorted({n for r in chosen for n in r['clips']},key=float)
         for offset in range(0,len(draws),4):
             selected=draws[offset:offset+4];panels=''
             for spec in chart_specs(chosen,draws=selected)[1]:
                 panels+='<article><h3>'+escape(spec['title'])+'</h3>'+table(['Athlete / attempt','Clip s','State'],[[r['name'],shown(r['value']),r['state']] for r in spec['rows']])+svg_chart(spec)[0]+'</article>'
-            parts.append('<details><summary>Matched clips · '+escape(route)+' · draws '+', '.join(selected)+'</summary><section><div class="chart-grid">'+panels+'</div></section></details>')
+            parts.append('<details><summary>Matched clips · '+escape(chosen[0].get('route_label',route))+' · draws '+', '.join(selected)+'</summary><section><div class="chart-grid">'+panels+'</div></section></details>')
     for d in documents:
         specs=split_specs([d]);splits=between_clips([d])
         body=table(['Split','Gap s','Recovery s','Unclassified s'],[[str(r['from_quickdraw'])+' → '+str(r['to_quickdraw']),shown(r['gap_seconds']),shown(r['total_marked_rest_in_gap_seconds']),shown(r['gap_outside_marked_rest_seconds'])] for r in splits])+svg_chart(specs[0])[0]
@@ -311,7 +326,7 @@ def pdf_overview(story,data,width,styles):
             for clip in clips[:2]:clip_panel+=panel(clip)
             if not clips:clip_panel=[para('No complete clip annotations.')]
             grid=Table([[panel(arrival),clip_panel],[panel(recovery),panel(foot)]],colWidths=[width/2]*2,hAlign='LEFT');grid.setStyle([('VALIGN',(0,0),(-1,-1),'TOP'),('LEFTPADDING',(0,0),(-1,-1),0),('RIGHTPADDING',(0,0),(-1,-1),12),('BOTTOMPADDING',(0,0),(-1,-1),12)])
-            story.extend([para('Route '+route+' · reference '+chosen[0]['name']),grid,Spacer(1,12)])
+            story.extend([para(chosen[0].get('route_label',route)+' · reference '+chosen[0]['name']),grid,Spacer(1,12)])
 
 def pdf_footwork_timeline(document,width):
     from reportlab.platypus import Flowable
@@ -357,9 +372,10 @@ def pdf_fonts(styles):
 def eligible_clip_rows(activities,summary):
     """Use the same closed, unique, bounded clips in older snapshot detail tables."""
     from .report_visuals import number
-    own=[a for a in activities if a['activity']=='clip' and all(a.get(k)==summary.get(k) for k in ('athlete','attempt','video'))]
+    own=[a for a in activities if a['activity']=='clip' and all(a.get(k)==summary.get(k) for k in ('athlete','attempt','video','attempt id'))]
     duration=number(summary.get('climb seconds'))
-    if duration is None or any(a['status']!='closed' for a in own):return {}
+    if duration is None or any(a['status']=='unfinished' for a in own):return {}
+    own=[a for a in own if a['status']=='closed']
     result={}
     for draw in {a['quickdraw'] for a in own}:
         hits=[a for a in own if a['quickdraw']==draw];a=hits[0]
@@ -370,10 +386,10 @@ def eligible_clip_rows(activities,summary):
 
 def gap_peers(splits,row,overview):
     from .report_visuals import number
-    identity=lambda r:tuple(r.get(k) for k in ('athlete','attempt','video'))
+    identity=lambda r:tuple(r.get(k) for k in ('athlete','attempt','video','attempt id'))
     def route_for(r):
-        matches=[s for s in overview if all(r.get(k) is None or r.get(k)==s.get(k) for k in ('athlete','attempt','video'))]
-        return matches[0].get('route') if len(matches)==1 else None
+        matches=[s for s in overview if all(r.get(k) is None or r.get(k)==s.get(k) for k in ('athlete','attempt','video','attempt id'))]
+        return matches[0].get('comparison scope',matches[0].get('route')) if len(matches)==1 else None
     route=route_for(row)
     if route is None:return []
     own=[s for s in splits if identity(s)==identity(row) and s['from quickdraw']==row['from quickdraw'] and s['to quickdraw']==row['to quickdraw']]

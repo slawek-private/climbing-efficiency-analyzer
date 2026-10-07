@@ -7,6 +7,7 @@ from uuid import uuid4
 from urllib.parse import quote
 from .labels import validate
 from .footwork import metrics,observations
+from . import identity as identities
 from .version import __version__
 
 from .reporting import OVERVIEW_CSS,overview_html,records as overview_records,footwork_timeline,pdf_overview,details_html
@@ -48,9 +49,9 @@ def section_comparison(documents,anonymous=False):
     rows=[]
     for i,d in enumerate(documents):
         for name in names:
-            own=arrival(d,name);ref=arrival(reference,name) if d['route']==reference['route'] else None
+            own=arrival(d,name);ref=arrival(reference,name) if identities.report_scope(d)==identities.report_scope(reference) else None
             delta=own-ref if own is not None and ref is not None else None
-            rows.append([f'Athlete {i+1}' if anonymous else d['climber'],d['attempt'],name,display(own,' s'),display(ref,' s'),display(delta,' s'),'Different route' if d['route']!=reference['route'] else 'Ambiguous / missing' if own is None or ref is None else 'Marked arrival'])
+            rows.append([f'Athlete {i+1}' if anonymous else d['climber'],d['attempt'],name,display(own,' s'),display(ref,' s'),display(delta,' s'),'Different route / round' if identities.report_scope(d)!=identities.report_scope(reference) else 'Ambiguous / missing' if own is None or ref is None else 'Marked arrival'])
     return rows
 
 def clip_window(event,times):
@@ -103,6 +104,7 @@ def export_report(documents,path,*,sources=None,media='none',include_hands=False
                 from .footwork import validate_track
                 points=validate_track(d)+[p for p in (d['start'],d['end']) if p]+[p['point'] for p in d.get('checkpoints',[])]
                 points += [e['start'] for e in d['open_events']]
+                points += [g['point'] for g in d.get('clip_gaps',[])]
                 for point in points:
                     if index['pts'][point['frame']]!=point['pts']:raise ValueError('Measurement does not match the source frame')
                 for e in events:
@@ -141,18 +143,25 @@ def export_report(documents,path,*,sources=None,media='none',include_hands=False
                 card+=controls+'</article>'
                 cards.append(card)
                 event_rows.append([e['label'],e['limb'],e['intent'],e['status'],f'{point["seconds"]:.3f}',point['frame'],point['pts'],f'{end["seconds"]-point["seconds"]:.3f}' if e['end'] else 'Point event'])
-                records.append({'athlete':name,'attempt':d['attempt'],'route':d['route'],'event_id':e['id'],'kind':e['kind'],'limb':e['limb'],'intent':e['intent'],'review_state':e['status'],'start_frame':point['frame'],'start_pts':point['pts'],'start_seconds':point['seconds'],'end_frame':end['frame'] if e['end'] else None,'end_pts':end['pts'] if e['end'] else None,'end_seconds':end['seconds'] if e['end'] else None,'source_sha256':d['source']['sha256'],'observation':e.get('observation',''),'interpretation':e.get('interpretation',''),'action':e.get('action','')})
+                records.append({**identities.columns(d),'clip_method':e.get('clip_method') if e['kind']=='clip' else None,'clip_reason':e.get('clip_reason','') if e['kind']=='clip' else '', 'athlete':name,'attempt':d['attempt'],'route':d['route'],'event_id':e['id'],'kind':e['kind'],'limb':e['limb'],'intent':e['intent'],'review_state':e['status'],'start_frame':point['frame'],'start_pts':point['pts'],'start_seconds':point['seconds'],'end_frame':end['frame'] if e['end'] else None,'end_pts':end['pts'] if e['end'] else None,'end_seconds':end['seconds'] if e['end'] else None,'source_sha256':d['source']['sha256'],'observation':e.get('observation',''),'interpretation':e.get('interpretation',''),'action':e.get('action','')})
             if cards:body+='<h3>Review these moments first</h3>'+''.join(cards[events.index(e)] for e in highlighted)
             for field,title in [('reflection','Athlete reflection'),('action','Agreed next action'),('retest','Next-session check')]:body+='<h3>'+title+'</h3><p class="notes">'+escape(coach.get(field) or 'Not recorded')+'</p>'
             body+='<details><summary>Full evidence index and timing appendix</summary><div>'+table(['Observation','Limb','Intent','Review','Video s','Frame','PTS','Length s'],event_rows)+footwork_timeline(d)+''.join(cards)+'</div></details>'
             body+='<details><summary>Coverage and provenance</summary><div>'+table(['Coverage','Start frame','End frame','Start s','End s'],[[c['state'],c['start']['frame'],c['end']['frame'],c['start']['seconds'],c['end']['seconds']] for c in d.get('footwork',{}).get('coverage',[])])+f'<p class="muted">Source SHA256 <code>{d["source"]["sha256"]}</code><br>Time base {escape(d["source"]["time_base"])} · first PTS {d["source"]["first_pts"]} · schema {escape(d["schema_version"])} · definition 1.0.0 · app {escape(__version__)}<br>Unfinished hand timers: {len(d["open_events"])}; unfinished foot interval: {bool(d.get("footwork",{}).get("pending"))}. These are excluded.</p></div></details>'
-            parts.append('<section data-evidence-key="'+str(n)+'">'+body+'</section>');summaries.append(dict(athlete=name,attempt=d['attempt'],route=d['route'],**m))
+            parts.append('<section data-evidence-key="'+str(n)+'">'+body+'</section>');summaries.append(dict(athlete=name,attempt=d['attempt'],route=d['route'],**m,**identities.columns(d)))
+            summaries[-1].update({'clip_'+k:v for k,v in identities.method_counts(d).items()})
         display_documents=[dict(d,climber=f'Athlete {i+1}' if anonymous else d['climber']) for i,d in enumerate(documents)]
+        if anonymous:
+            display_documents=copy.deepcopy(display_documents)
+            for d in display_documents:
+                if d.get('assignment'):d['assignment']['athlete'].update(name=d['climber'],label='',teams=[])
+        from .reporting import context_html
+        parts.insert(0,context_html(display_documents))
         parts.append('<details><summary>Detailed checkpoint, clipping and split timings · export snapshot</summary>'+details_html(display_documents)+'</details>')
         overview=overview_html(overview_records(display_documents))
         report_data=json.dumps(payload,ensure_ascii=True).replace('<','\\u003c');html='<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Climb Studio · Coaching review</title><style>'+CSS+'</style></head><body><main><header><p class="muted">Climb Studio · Local coaching review</p><h1>Coaching review</h1><p>Human-marked observations with explicit review states and coach interpretations. Video timing does not measure force, fatigue, energy expenditure or the cause of a fall.</p><p class="print-note">Video replay is available in the interactive HTML. This printed copy retains original frame numbers and timestamps.</p></header><section id="player" class="player" hidden><div class="actions"><strong id="playTitle"></strong><button id="closePlayer">Close replay</button></div><video id="video" controls playsinline preload="metadata"></video><p id="playStatus" class="muted" aria-live="polite"></p></section>'+overview+''.join(parts)+'<footer><p class="muted">No network assets or uploads. Media mode: '+media+'. Share accompanying media folders with this HTML when using portable sections. Original-video links depend on this computer and browser codec support. Replay pixels may be compressed; source frame and PTS identity remain in the measurements.</p></footer></main><script id="reportData" type="application/json">'+report_data+'</script><script>'+SCRIPT+'</script></body></html>'
         (stage/path.name).write_text(html,encoding='utf-8')
-        (stage/(path.stem+'.json')).write_text(json.dumps({'app_version':__version__,'definition_version':'1.0.0','media_mode':media,'summaries':summaries,'events':records,'attempts':[dict(d,climber=f'Athlete {i+1}' if anonymous else d['climber']) for i,d in enumerate(documents)],'replay':payload},indent=2),encoding='utf-8')
+        (stage/(path.stem+'.json')).write_text(json.dumps({'app_version':__version__,'definition_version':'1.0.0','media_mode':media,'summaries':summaries,'events':records,'attempts':display_documents,'replay':payload},indent=2),encoding='utf-8')
         for suffix,rows in [('events',records),('summary',summaries)]:
             with (stage/(path.stem+'-'+suffix+'.csv')).open('w',newline='',encoding='utf-8-sig') as f:
                 writer=csv.DictWriter(f,fieldnames=list(rows[0]) if rows else ['athlete','attempt']);writer.writeheader()
@@ -216,6 +225,9 @@ def export_pdf(documents,path,anonymous=False,stills=None):
                 for k,title in [('observation','Observed'),('interpretation','Interpretation'),('action','Action')]:
                     if e.get(k):add(title+': '+e[k])
         add('Coverage and provenance','Heading2');grid(['Coverage','Start frame / s','End frame / s'],[[x['state'],f"{x['start']['frame']} / {x['start']['seconds']:.3f}",f"{x['end']['frame']} / {x['end']['seconds']:.3f}"] for x in d.get('footwork',{}).get('coverage',[])])
+        from . import identity as identities
+        add(identities.context(d));add(identities.method_summary(d));add('DRAFT · '+', '.join(identities.review_issues(d)) if identities.review_issues(d) else 'Reviewed boundaries and clipping')
+        for gap in d.get('clip_gaps',[]):add(f"QD {gap['target'] or '?'} · {gap['visibility']} · frame {gap['point']['frame']} / PTS {gap['point']['pts']}: "+gap['notes'])
         add('Source SHA256: '+d['source']['sha256']);add('Time base: '+d['source']['time_base']+' · schema '+d['schema_version']+' · definition 1.0.0 · app '+__version__);add('Occluded and unreviewed footage is unknown. Draft timers are excluded. Timing does not establish fatigue, force or causes of falls. Replay is available in the HTML report.')
     comparison=section_comparison(documents,anonymous)
     if comparison:

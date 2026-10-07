@@ -4,6 +4,7 @@ from pathlib import Path
 from .labels import validate, load, length, union, rest_breakdown
 from .report import esc
 from .version import APP_NAME,__version__
+from . import identity as identities
 
 
 def rows(documents):
@@ -11,6 +12,7 @@ def rows(documents):
     for d in documents:
         validate(d)
         identity = dict(athlete=d['climber'], attempt=d['attempt'], video=d['source']['file'], attempt_id=d.get('attempt_id',''), route=d['route'])
+        identity.update(identities.columns(d))
         start = d['start']['seconds'] if d['start'] else None
         end = d['end']['seconds'] if d['end'] else None
         contacts = [e for e in d['events'] if e['kind']=='contact']
@@ -18,19 +20,21 @@ def rows(documents):
         overview.append({**identity,'outcome':{'failed':'Fell / failed','completed':'Topped'}.get(d['outcome'],d['outcome']),'climb_seconds':end-start if start is not None and end is not None else None,'start_video_seconds':start,'end_video_seconds':end,'left_marked_hold_seconds':totals['left'],'right_marked_hold_seconds':totals['right'],'closed_hold_intervals':len(contacts),'unfinished_intervals':len(d['open_events']),'status':'unfinished holds' if d['open_events'] else 'boundaries missing' if start is None or end is None else 'marked measurements'})
         summary=overview[-1]
         for kind in ("rest","clip","chalk"):
-            intervals=[(max(start,e["start"]["seconds"]),min(end,e["end"]["seconds"])) for e in d["events"] if e["kind"]==kind and e["end"]["seconds"]>start and e["start"]["seconds"]<end] if start is not None and end is not None else []
+            intervals=[(max(start,e["start"]["seconds"]),min(end,e["end"]["seconds"])) for e in d["events"] if e["kind"]==kind and identities.timing_visible(d,e) and e["end"]["seconds"]>start and e["start"]["seconds"]<end] if start is not None and end is not None else []
             marked=any(e["kind"]==kind for e in d["events"])
             total=length(intervals) if marked and start is not None and end is not None else None
             summary[kind+"_marked_seconds"]=total
             summary[kind+"_marked_count"]=len(union(intervals)) if kind=="rest" and total is not None else len(intervals) if total is not None else None
         climb_clips=[e for e in d["events"] if e["kind"]=="clip" and start is not None and end is not None and e["end"]["seconds"]>start and e["start"]["seconds"]<end]
         methods=[e.get("clip_method") for e in climb_clips]
-        for method in ("mouth","direct"):summary["clip_"+method+"_count"]=methods.count(method) if any(methods) else None
+        method_counts=identities.method_counts(d)
+        for method in ("mouth","direct"):summary["clip_"+method+"_count"]=method_counts[method] if any(methods) or d['reviewed'].get('clips') else None
+        summary.update({"clip_"+k+"_count":v for k,v in method_counts.items() if k not in ('mouth','direct')})
         summary["marked_rest_share"]=summary["rest_marked_seconds"]/summary["climb_seconds"] if summary["rest_marked_seconds"] is not None else None
         summary["seconds_outside_marked_rests"]=summary["climb_seconds"]-summary["rest_marked_seconds"] if summary["rest_marked_seconds"] is not None else None
         for kind in ('rest','clip','chalk'):
             for hand in ('left','right'):
-                hand_events=[e for e in d['events'] if e['kind']==kind and e['hand']==hand]
+                hand_events=[e for e in d['events'] if e['kind']==kind and e['hand']==hand and identities.timing_visible(d,e)]
                 hand_intervals=[(max(start,e['start']['seconds']),min(end,e['end']['seconds'])) for e in hand_events if e['end']['seconds']>start and e['start']['seconds']<end] if start is not None and end is not None else []
                 summary[hand+'_'+kind+'_marked_seconds']=length(hand_intervals) if hand_events and start is not None and end is not None else None
         summary.update(rest_breakdown(d))
@@ -67,8 +71,9 @@ def export_comparison(documents,path):
     for d in documents:
         for e in d['events']+d['open_events']:
             if e['kind'] not in ('rest','clip','chalk'):continue
+            visible=identities.timing_visible(d,e)
             end=e.get('end');start=e['start'];climb_start=d['start']['seconds'] if d['start'] else None
-            activities.append(dict(athlete=d['climber'],attempt=d['attempt'],video=d['source']['file'],activity=e['kind'],hand=e['hand'],quickdraw=e['target'],clip_method=e.get('clip_method') if e['kind']=='clip' else None,start_from_climb_seconds=start['seconds']-climb_start if climb_start is not None else None,end_from_climb_seconds=end['seconds']-climb_start if end and climb_start is not None else None,start_video_seconds=start['seconds'],end_video_seconds=end['seconds'] if end else None,duration_seconds=end['seconds']-start['seconds'] if end else None,start_frame=start['frame'],end_frame=end['frame'] if end else None,status='closed' if end else 'unfinished'))
+            activities.append(dict(athlete=d['climber'],attempt=d['attempt'],video=d['source']['file'],activity=e['kind'],hand=e['hand'],quickdraw=e['target'],**identities.columns(d),clip_reason=e.get('clip_reason',''),clip_method=e.get('clip_method') if e['kind']=='clip' else None,start_from_climb_seconds=start['seconds']-climb_start if climb_start is not None else None,end_from_climb_seconds=end['seconds']-climb_start if end and climb_start is not None else None,start_video_seconds=start['seconds'],end_video_seconds=end['seconds'] if end else None,duration_seconds=end['seconds']-start['seconds'] if end and visible else None,start_frame=start['frame'],end_frame=end['frame'] if end else None,status='visibility gap: timing unavailable' if not visible else 'closed' if end else 'unfinished'))
     groups.append(activities)
     headings=('Athlete overview','Arrival at named points','Every hand / hold interval','Rest, clipping and chalking intervals')
     defaults=(['athlete','attempt','climb_seconds'],['athlete','point','seconds_from_climb_start'],['athlete','hand','hold','duration_seconds'],['athlete','activity','duration_seconds'])
@@ -88,12 +93,12 @@ def export_comparison(documents,path):
     names=sorted({p['point'] for p in groups[1]})
     matrix=[]
     for summary in groups[0]:
-        matching=[p for p in groups[1] if all(p[k]==summary[k] for k in ('athlete','attempt','video'))]
+        matching=[p for p in groups[1] if all(p[k]==summary[k] for k in ('athlete','attempt','video','attempt_id'))]
         matrix.append('<tr><th>'+esc(summary['athlete']+' / '+summary['attempt'])+'</th>'+''.join('<td>'+('<br>'.join(f"{p['seconds_from_climb_start']:.3f} s" for p in matching if p['point']==name and p['seconds_from_climb_start'] is not None) or 'Unmarked')+'</td>' for name in names)+'</tr>')
     matrix='<section><h2>Time to each point · seconds from climb start</h2><div class="scroll"><table><tr><th>Athlete / attempt</th>'+''.join('<th>'+esc(n)+'</th>' for n in names)+'</tr>'+''.join(matrix)+'</table></div></section>'
-    from .reporting import records,overview_html,snapshot,details_html
+    from .reporting import records,overview_html,snapshot,details_html,context_html
     from .report_visuals import STYLE
-    html='<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Climb comparison</title><style>'+STYLE+'</style></head><body><header><p class="eyebrow">'+esc(APP_NAME+' · '+__version__)+'</p><h1>Climb comparison</h1><p>Recorded timing, checked footage and coaching evidence. CSV files retain every measurement.</p></header>'+overview_html(records(documents))+'<details><summary>Details · timing tables, activity log and provenance</summary>'+details_html(documents)+sections[0]+matrix+''.join(sections[1:])+'</details>'+snapshot(documents)+'</body></html>'
+    html='<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Climb comparison</title><style>'+STYLE+'</style></head><body><header><p class="eyebrow">'+esc(APP_NAME+' · '+__version__)+'</p><h1>Climb comparison</h1><p>Recorded timing, checked footage and coaching evidence. CSV files retain every measurement.</p></header>'+context_html(documents)+overview_html(records(documents))+'<details><summary>Details · timing tables, activity log and provenance</summary>'+details_html(documents)+sections[0]+matrix+''.join(sections[1:])+'</details>'+snapshot(documents)+'</body></html>'
     path.write_text(html,encoding='utf-8')
     return path
 

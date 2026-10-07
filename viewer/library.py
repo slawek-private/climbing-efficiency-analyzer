@@ -7,10 +7,11 @@ import av
 from PIL import Image
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout,QGridLayout, QLabel, QPushButton, QTableWidget, QTableWidgetItem,
-                               QAbstractItemView, QHeaderView, QMessageBox,QCheckBox,QMenu)
+                               QAbstractItemView, QHeaderView, QMessageBox,QCheckBox,QMenu,QComboBox)
 from . import storage
+from . import identity
 
-COLUMNS = ['Video', 'Athlete', 'Resolution', 'FPS', 'Codec', 'Duration', 'File size', 'Smooth preview', 'Preview size', 'Notes','Workspace','Action']
+COLUMNS = ['Video', 'Athlete', 'Resolution', 'FPS', 'Codec', 'Duration', 'File size', 'Smooth preview', 'Preview size', 'Notes','Workspace','Action','Session','Route version','Attempts']
 HDR_TRANSFERS = {16, 18}  # SMPTE ST 2084 (PQ) and ARIB STD-B67 (HLG)
 
 
@@ -97,6 +98,11 @@ class LibraryTab(QWidget):
                        'videos are processed one after another in the background while you keep working. Originals are never modified.')
         self.heading=QLabel();self.heading.setObjectName('section');layout.addWidget(self.heading)
         self.open_now=QLabel();self.open_now.setObjectName('muted');self.open_now.setWordWrap(True);layout.addWidget(self.open_now)
+        filters=QHBoxLayout();self.session_filter=QComboBox()
+        for label,key in [('Current session + unassigned','current'),('All sessions','all'),('Needs assignment','pending')]:self.session_filter.addItem(label,key)
+        self.athlete_filter=QComboBox();self.athlete_filter.addItem('All athletes','');self.route_filter=QComboBox();self.route_filter.addItem('All route versions','')
+        for name,control in [('Session scope',self.session_filter),('Athlete',self.athlete_filter),('Route version',self.route_filter)]:control.setAccessibleName(name);filters.addWidget(control,1);control.currentIndexChanged.connect(self.render)
+        assign=QPushButton('Assign selected…');assign.clicked.connect(self.assign_selected);filters.addWidget(assign);layout.addLayout(filters)
         intro.setWordWrap(True);intro.setObjectName('muted');layout.addWidget(intro)
         bar = QHBoxLayout();self.buttons = {};self.more_actions={};more=QPushButton("More ▾");more_menu=QMenu(more);more.setMenu(more_menu)
         for key, text, callback, tip in [
@@ -118,11 +124,46 @@ class LibraryTab(QWidget):
         self.table.cellDoubleClicked.connect(self.open_row);self.table.setToolTip('Double-click a video to open it in the Video workspace.');layout.addWidget(self.table, 1)
         self.summary = QLabel();self.summary.setObjectName('muted');self.summary.setWordWrap(True);layout.addWidget(self.summary)
     def show_details(self,show):
-        for column in (1,2,3,4,5,6,9):self.table.setColumnHidden(column,not show)
+        for column in (2,3,4,5,6,9):self.table.setColumnHidden(column,not show)
     def update_heading(self):
         current=self.window.video_path;self.heading.setText(f'{self.window.project.name} · {len(self.paths())} videos')
         self.open_now.setText('Open now: '+current.name+' · choose another video below' if current else 'Choose a video below to open it in Video analysis.')
-    def paths(self):return list(self.window.workspace.videos)
+    def path_assignments(self,path):
+        ws=self.window.workspace;docs=[s['document'] for p,s in list(ws.states.items())+[(e['path'],e['state']) for e in ws.attempts] if p==path]
+        snapshots=[d['assignment'] for d in docs if identity.assigned(d)]
+        if not snapshots and path in ws.assignments:
+            a=ws.assignments[path];snapshots=[{key:identity.entry(ws.organisation,group,a[key]) for key,group in [('athlete','athletes'),('session','sessions'),('route','routes')]}]
+        return [a for a in snapshots if all(a.values())]
+    def paths(self):
+        ws=self.window.workspace;paths=[]
+        for path in ws.videos:
+            values=self.path_assignments(path);scope=self.session_filter.currentData()
+            if scope=='pending' and values:continue
+            if scope=='current' and values:values=[a for a in values if a['session']['id']==ws.session_id]
+            if scope=='current' and self.path_assignments(path) and not values:continue
+            if self.athlete_filter.currentData():values=[a for a in values if a['athlete']['id']==self.athlete_filter.currentData()]
+            if self.route_filter.currentData():values=[a for a in values if a['route']['id']==self.route_filter.currentData()]
+            if (self.athlete_filter.currentData() or self.route_filter.currentData()) and not values:continue
+            paths.append(path)
+        return paths
+    def refresh_filters(self):
+        for control,group,label,format_label in [(self.athlete_filter,'athletes','All athletes',identity.athlete_label),(self.route_filter,'routes','All route versions',identity.route_label)]:
+            old=control.currentData();control.blockSignals(True);control.clear();control.addItem(label,'')
+            for item in self.window.workspace.organisation[group]:control.addItem(format_label(item),item['id'])
+            control.setCurrentIndex(max(0,control.findData(old)));control.blockSignals(False)
+    def assign_selected(self):
+        from .context_ui import AssignmentDialog,apply_assignments
+        if not self.window.flush_autosave():return
+        paths=self.paths();chosen=[paths[r] for r in sorted({i.row() for i in self.table.selectedItems()})]
+        if not chosen:return
+        current=str(self.window.video_path.resolve()) if self.window.video_path else None
+        rows=[(p,self.window.document() if p==current else self.window.workspace.states.get(p,{}).get('document')) for p in chosen]
+        dialog=AssignmentDialog(self.window,rows,True)
+        if dialog.exec()!=dialog.DialogCode.Accepted:return
+        existing=[r for r in dialog.result_assignments if r[1] is not None]
+        for path,doc,a,s,r in dialog.result_assignments:
+            if doc is None:self.window.workspace.assignments[path]={'athlete':a,'session':s,'route':r}
+        dialog.result_assignments=existing;apply_assignments(self.window,dialog)
     def activate(self):
         self.render()
         missing = [p for p in self.paths() if p not in self.meta and Path(p).is_file()]
@@ -138,6 +179,7 @@ class LibraryTab(QWidget):
     def preview_ready(self, meta):
         return bool(meta.get('sha256')) and (storage.folders(self.window.data_root())[0]/meta['sha256']/'manifest.json').exists()
     def render(self):
+        self.refresh_filters()
         self.update_heading();paths = self.paths();self.table.setRowCount(len(paths));states = self.window.workspace.states;wanted = 0;candidates = low_fps = low_res = hdr = 0
         for row, path in enumerate(paths):
             m = self.meta.get(path, {});state = states.get(path)
@@ -154,10 +196,16 @@ class LibraryTab(QWidget):
             else:values = [Path(path).name]+['']*6+[self.status.get(path, 'Waiting')]+['']*2
             current=bool(self.window.video_path and path==str(self.window.video_path.resolve()));missing=not Path(path).is_file();readiness='Open now' if current else 'Missing source' if missing else 'Cannot read' if 'error' in m else 'Can measure' if m else 'Reading metadata'
             values += [readiness,'']
+            assignments=self.path_assignments(path)
+            values[1]=' / '.join(dict.fromkeys(identity.athlete_label(a['athlete']) for a in assignments)) or 'Needs assignment'
+            count=sum(p==path for p in self.window.workspace.states)+sum(e['path']==path for e in self.window.workspace.attempts)
+            values+=[' / '.join(dict.fromkeys(identity.session_label(a['session']) for a in assignments)),' / '.join(dict.fromkeys(identity.route_label(a['route']) for a in assignments)),str(count) if count else 'Not started']
+            if not assignments and not missing:values[10]='Needs assignment · can prepare preview'
             for col, value in enumerate(values):
                 item = QTableWidgetItem(str(value))
                 if current and col in (0,10):font=item.font();font.setBold(True);item.setFont(font)
                 if col == 9 and value:item.setToolTip('Milliseconds/frame is nominal spacing, not an error bound; actual timestamps can vary. <1080p: small hands and quickdraws. HDR: colours may look flat.')
+                if col in (0,1):item.setToolTip('\n'.join(identity.session_label(a['session'])+' / '+identity.route_label(a['route']) for a in assignments) or 'Assign athlete, session and route before analysis.')
                 if col == 7:item.setToolTip({'Ready': 'Smooth preview prepared: scrubbing and stepping use it automatically.', 'Recommended': '4K or HEVC: scrubbing the original is slow. Prepare a smooth preview.', 'Optional': 'Usually smooth enough without a preview.'}.get(value, ''))
                 self.table.setItem(row, col, item)
             action=self.table.cellWidget(row,11)
@@ -165,6 +213,7 @@ class LibraryTab(QWidget):
                 action=QPushButton();action.clicked.connect(lambda checked=False,b=action:self.row_action(b.property('videoRow'),True));self.table.setCellWidget(row,11,action)
             action.setProperty('videoRow',row);action.setText('Locate…' if missing else 'Return to video' if current else 'Open')
         root = self.window.data_root();cache = sum(r['preview_bytes']+r['index_bytes'] for r in storage.entries(root));limit = float(self.window.settings.value('cache_limit_gb', storage.DEFAULT_LIMIT_GB))
+        self.table.setColumnHidden(12,self.session_filter.currentData()=='current')
         free = shutil.disk_usage(root if root.exists() else Path.home()).free
         flags = [f'{n} {what}' for n, what in ((low_fps, 'under 50 fps (wider frame spacing)'), (low_res, 'below 1080p'), (hdr, 'HDR')) if n]
         self.summary.setText(f'{len(paths)} videos'+(' · '+', '.join(flags) if flags else '')+f' · cache {storage.human(cache)} of {limit:g} GB · {storage.human(free)} free'
@@ -214,11 +263,13 @@ class LibraryTab(QWidget):
         if QMessageBox.question(self, 'Remove from project?', f'Remove {len(chosen)} video(s) from this project? Video files and saved measurement files stay on disk. '
                                 'Their smooth previews can be deleted in Storage….') != QMessageBox.StandardButton.Yes:return
         for p in chosen:
-            self.window.workspace.videos.remove(p);self.window.workspace.states.pop(p, None);self.meta.pop(p, None)
+            self.window.workspace.videos.remove(p);self.window.workspace.states.pop(p, None);self.window.workspace.assignments.pop(p,None);self.meta.pop(p, None)
         self.window.workspace.attempts=[e for e in self.window.workspace.attempts if e['path'] not in chosen]
         self.window.workspace.save();self.window.refresh_collection();self.render()
     def open_row(self, row, col):
-        self.window.select_video(row);self.window.main_tabs.setCurrentIndex(0);self.render()
+        paths=self.paths()
+        if not 0<=row<len(paths):return
+        self.window.select_video(self.window.workspace.videos.index(paths[row]));self.window.main_tabs.setCurrentIndex(0);self.render()
     def shutdown(self):
         for worker in (self.meta_worker, self.bulk):
             if worker and worker.isRunning():worker.requestInterruption();worker.wait()

@@ -24,7 +24,8 @@
         "1.0.0",
         "1.1.0",
         "1.2.0",
-        "1.3.0"
+        "1.3.0",
+        "1.4.0"
       ]
     },
     "source": {
@@ -385,6 +386,66 @@
           "type": "string"
         }
       }
+    },
+    "assignment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "athlete",
+        "session",
+        "route"
+      ],
+      "properties": {
+        "athlete": {
+          "$ref": "#/$defs/athlete"
+        },
+        "session": {
+          "$ref": "#/$defs/session"
+        },
+        "route": {
+          "$ref": "#/$defs/routeVersion"
+        }
+      }
+    },
+    "clip_gaps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "target",
+          "point",
+          "visibility",
+          "notes"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "target": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "point": {
+            "$ref": "#/$defs/point"
+          },
+          "visibility": {
+            "enum": [
+              "missing",
+              "partial"
+            ]
+          },
+          "notes": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
     }
   },
   "$defs": {
@@ -468,9 +529,18 @@
         "clip_method": {
           "enum": [
             "mouth",
-            "direct"
+            "direct",
+            "unknown"
           ],
-          "description": "Clip technique: rope pulled to the mouth before clipping, or clipped directly from a favourable position. Absent means unknown."
+          "description": "Explicit method; unknown requires a reason. Absent is unanswered, not a guess."
+        },
+        "clip_reason": {
+          "enum": [
+            "",
+            "hidden",
+            "camera",
+            "unclear"
+          ]
         }
       }
     },
@@ -523,9 +593,127 @@
         "clip_method": {
           "enum": [
             "mouth",
-            "direct"
+            "direct",
+            "unknown"
           ],
-          "description": "Clip technique: rope pulled to the mouth before clipping, or clipped directly from a favourable position. Absent means unknown."
+          "description": "Explicit method; unknown requires a reason. Absent is unanswered, not a guess."
+        },
+        "clip_reason": {
+          "enum": [
+            "",
+            "hidden",
+            "camera",
+            "unclear"
+          ]
+        }
+      }
+    },
+    "athlete": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "label",
+        "teams"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{32}$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "label": {
+          "type": "string"
+        },
+        "teams": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "session": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "kind",
+        "date",
+        "team",
+        "event",
+        "round",
+        "goal"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{32}$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "enum": [
+            "training",
+            "competition"
+          ]
+        },
+        "date": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "team": {
+          "type": "string"
+        },
+        "event": {
+          "type": "string"
+        },
+        "round": {
+          "type": "string"
+        },
+        "goal": {
+          "type": "string"
+        }
+      }
+    },
+    "routeVersion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "version",
+        "discipline"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{32}$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "discipline": {
+          "enum": [
+            "lead",
+            "boulder",
+            "speed",
+            "other"
+          ]
         }
       }
     }

@@ -63,6 +63,8 @@ class Tile(QWidget):
         self.view = ImageView();self.view.setParent(self);self.view.setFrameShape(QFrame.Shape.NoFrame)
         result = {'failed': 'fell', 'completed': 'topped'}.get(document['outcome'], '')
         self.title = QLabel(f"{document['climber']} · {document['attempt']}"+(f' · {result}' if result else ''), self);self.status = QLabel(self)
+        if document.get('assignment'):
+            session=document['assignment']['session'];self.title.setText(self.title.text()+' · '+session['name']+' · '+session['date'])
         for label in (self.title, self.status):label.setStyleSheet(OVERLAY);label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.title.setStyleSheet(OVERLAY+'font-weight: 700;')
         from .scrubber import PrecisionScrubber
@@ -193,7 +195,7 @@ class SyncView(QWidget):
         self.area.set_tiles(self.tiles)
         self.lo = min((-t.anchor for t in self.tiles), default=0.);self.hi = max((t.reader.times[-1]-t.anchor for t in self.tiles), default=1.)
         for tile in self.tiles:tile.timeline.view_range=(self.lo+tile.anchor,self.hi+tile.anchor)
-        self.athletes_button.setText(f'Choose athletes · {len(self.window.compare_scope.chosen())}')
+        self.athletes_button.setText(f'Choose athletes & attempts · {len(self.window.compare_scope.chosen())}')
         self.slider.blockSignals(True);self.slider.setRange(int(self.lo*1000), int(self.hi*1000));self.slider.blockSignals(False)
         what = 'climb start' if anchor == 'start' else 'point '+anchor
         self.note.setText(f'{len(self.tiles)} video(s) aligned at {what}'+(f" · not marked: {', '.join(skipped)}" if skipped else '') if self.tiles else 'Choose athletes and mark their climb start (or the chosen point) to compare.')
