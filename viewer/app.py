@@ -227,8 +227,10 @@ class Window(QMainWindow):
         if self.reader:self.reader.close()
         self.reader=None;self.history=None;self.video_path=path;self.label_path=None;self.saved=None
         self.table.setRowCount(0);self.summary.setText("");self.position.setText("Indexing exact frames… This may take a minute for 4K videos.")
-        self.progress.setValue(0);self.progress.show();self.worker=IndexWorker(path)
-        self.worker.progress.connect(self.progress.setValue);self.worker.ready.connect(self.index_ready);self.worker.error.connect(self.index_error);self.worker.start()
+        self.progress.setRange(0,0);self.progress.setFormat('Opening '+path.name+' · checking file identity');self.progress.show();self.worker=IndexWorker(path)
+        def indexed_progress(value):
+            self.progress.setRange(0,100 if value else 0);self.progress.setValue(value);self.progress.setFormat('Opening '+path.name+' · reading frame times'+(' · %p%' if value else ''))
+        self.worker.progress.connect(indexed_progress);self.worker.ready.connect(self.index_ready);self.worker.error.connect(self.index_error);self.worker.start()
     def index_error(self,message):self.progress.hide();self.position.setText("Video could not be indexed");self.error(message)
     def index_ready(self,index):
         self.progress.hide()
@@ -309,14 +311,16 @@ class Window(QMainWindow):
         def value(key):return "not reviewed" if result[key] is None else f"{result[key]:.3f}" if isinstance(result[key],float) else str(result[key])
         self.summary.setText(f"Climb: {value('climb_seconds')} s · Holds: {value('unique_holds')}\nRests: {value('rest_count')} · Rest time: {value('rest_seconds')} s\nStart: {doc['start']['seconds'] if doc['start'] else 'unmarked'} · End: {doc['end']['seconds'] if doc['end'] else 'unmarked'}")
         self.visible_events=sorted(doc["events"],key=lambda e:e["start"]["seconds"])
-        self.table.blockSignals(True);self.table.setRowCount(len(self.visible_events))
-        for row,e in enumerate(self.visible_events):
-            values=(e["kind"],e["hand"],str(e["target"] or "—"),f"{e['start']['seconds']:.3f}",f"{e['end']['seconds']:.3f}",f"{e['end']['seconds']-e['start']['seconds']:.3f}")
-            for col,text in enumerate(values):
-                item=QTableWidgetItem(text)
-                if e["confidence"]<.8:item.setBackground(QColor("#ffebc8"))
-                item.setToolTip(f"Subjective confidence: {e['confidence']:.2f}\n{e['notes']}");self.table.setItem(row,col,item)
-        self.table.blockSignals(False);self.table.resizeColumnsToContents();self.timeline.document=doc;self.timeline.update();self.rendering=False
+        if not getattr(self,'simple_ready',False):
+            self.table.blockSignals(True);self.table.setRowCount(len(self.visible_events))
+            for row,e in enumerate(self.visible_events):
+                values=(e["kind"],e["hand"],str(e["target"] or "—"),f"{e['start']['seconds']:.3f}",f"{e['end']['seconds']:.3f}",f"{e['end']['seconds']-e['start']['seconds']:.3f}")
+                for col,text in enumerate(values):
+                    item=QTableWidgetItem(text)
+                    if e["confidence"]<.8:item.setBackground(QColor("#ffebc8"))
+                    item.setToolTip(f"Subjective confidence: {e['confidence']:.2f}\n{e['notes']}");self.table.setItem(row,col,item)
+            self.table.blockSignals(False);self.table.resizeColumnsToContents()
+        self.timeline.document=doc;self.timeline.update();self.rendering=False
         self.setWindowTitle(f"Blue route · {self.video_path.name if self.video_path else ''}"+(" *" if self.dirty() else ""))
     def selected_event(self):
         row=self.table.currentRow()

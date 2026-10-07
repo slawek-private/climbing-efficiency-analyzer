@@ -154,7 +154,7 @@ def test_project_video_landing_navigation_and_coaching_hand_timers(tmp_path,monk
     assert w.main_tabs.currentWidget() is w.measure_page and w.video_navigation.buttons[0].isChecked() and w.video_count.text()=='Viewing 1/2'
     d=copy.deepcopy(w.document());enable(d);w.commit(d);w.show_frame(5);w.toggle_hand_timer('chalk','left');w.show_frame(8);w.toggle_hand_timer('chalk','left')
     assert w.document()['schema_version']=='1.4.0' and w.document()['events'][-1]['kind']=='chalk' and w.autosave()
-    w.video_navigation.buttons[1].click();wait_until(app,lambda:w.video_path==paths[1] and w.reader is not None and not w.worker.isRunning())
+    w.video_navigation.buttons[1].trigger();wait_until(app,lambda:w.video_path==paths[1] and w.reader is not None and not w.worker.isRunning())
     assert w.video_navigation.buttons[1].isChecked() and not w.video_navigation.buttons[0].isChecked() and w.video_count.text()=='Viewing 2/2'
     w.show_view(w.library);assert 'Open now: side.mkv' in w.library.open_now.text()
     assert w.open_project(project) and w.main_tabs.currentWidget() is w.library

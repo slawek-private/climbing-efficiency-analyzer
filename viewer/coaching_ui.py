@@ -3,6 +3,7 @@ import copy
 from uuid import uuid4
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QWidget,QVBoxLayout,QHBoxLayout,QPushButton,QLabel,QComboBox,QDialog,QFormLayout,QSpinBox,QDialogButtonBox,QPlainTextEdit,QTableWidget,QTableWidgetItem,QHeaderView,QAbstractItemView,QMenu)
+from .controls import Button as QPushButton
 from .footwork import enable,metrics,KINDS,INTENTS
 
 HELP=('Both feet off means neither foot visibly contacting a hold, wall, volume or rock. Smears and hooks count as contact. '
@@ -100,11 +101,11 @@ class FootworkPanel(QWidget):
         e=self.selected()
         if e:self.w.replay_observation(e)
     def select(self,identifier):
-        self.toggle.setChecked(True)
+        self.w.review_tabs.setCurrentWidget(self);self.toggle.setChecked(True)
         for row,e in enumerate(self.entries):
             if e['id']==identifier:self.table.selectRow(row);self.w.measurement_scroll.ensureWidgetVisible(self.table);break
     def refresh(self,d,now):
-        self.setVisible(bool(d))
+        self.setEnabled(bool(d))
         if not d:self.entries=[];self.displayed=None;self.table.setRowCount(0);return
         track=d.get('footwork',{});m=metrics(d);pending=track.get('pending')
         self.both.setText(f'Stop both feet off · {max(0,now-pending["start"]["seconds"]):.1f} s' if pending else 'Start both-feet-off interval');

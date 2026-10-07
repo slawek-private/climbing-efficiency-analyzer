@@ -136,7 +136,7 @@ class Window(LegacyWindow):
         d['reviewed']={k:False for k in d['reviewed']}
         if self.commit(d) and pending and kind=='clip':
             self.clip_review.event_id=closed['id'];self.clip_review.refresh(self.document())
-            if not identity.clip_answered(closed):self.measurement_scroll.ensureWidgetVisible(self.clip_review)
+            if not identity.clip_answered(closed):self.review_tabs.setCurrentWidget(self.clip_review);self.measurement_scroll.ensureWidgetVisible(self.clip_review)
             self.draw.setValue(min(self.draw.maximum(),max(self.draw.value(),(pending['target'] or 1)+1)));self.remember_current()
     def stop_legacy_rest(self):
         if not self.ready_to_mark(ignore_assignment=True):return
@@ -156,13 +156,18 @@ class Window(LegacyWindow):
         d=self.document();kind=self.event_kind.currentData();hand=self.event_hand.currentData();query=self.event_search.text().strip().casefold()
         self.visible_events=[e for e in self.visible_events if (kind is None or e['kind']==kind) and (hand is None or e['hand']==hand) and (not query or query in (' '.join(str(e.get(k) or '') for k in ('target','notes','clip_method'))).casefold())]
         self.table.blockSignals(True);self.table.setRowCount(len(self.visible_events))
-        self.table.setHorizontalHeaderLabels(['Event','Hand','#','Start','End','Time'])
+        self.table.setColumnCount(3);self.table.setHorizontalHeaderLabels(['Event / method','Video time','Duration'])
         self.points_table.setHorizontalHeaderLabels(['Point','Video','Climb','Comment'])
         for col,tip in enumerate(['','Seconds in the video','Seconds from climb start','']):self.points_table.horizontalHeaderItem(col).setToolTip(tip)
-        for col,tip in enumerate(['','','Hold or quickdraw number, with clip method','Seconds from climb start','Seconds from climb start','Seconds']):self.table.horizontalHeaderItem(col).setToolTip(tip)
         for row,e in enumerate(self.visible_events):
-            for col,value in enumerate(({'contact':'Hold','rest':'Rest','clip':'Clip','offwall':'Hand away','chalk':'Chalk'}[e['kind']],{'left':'Left','right':'Right','none':'—'}[e['hand']],str(e['target'] or '—')+{'mouth':' · two-stage','direct':' · direct','unknown':' · cannot tell'}.get(e.get('clip_method'),' · answer needed' if e['kind']=='clip' else ''),f"{e['start']['seconds']-d['start']['seconds']:.2f}" if d['start'] else '—',f"{e['end']['seconds']-d['start']['seconds']:.2f}" if d['start'] else '—',f"{e['end']['seconds']-e['start']['seconds']:.2f}")):
-                item=QTableWidgetItem(str(value));item.setToolTip(f"Video time: {e['start']['seconds']:.3f}–{e['end']['seconds']:.3f} s"+('' if d['start'] else ' · mark the climb start for climb-relative times'));self.table.setItem(row,col,item)
+            activity={'contact':'Hold','rest':'Rest','clip':'Clip','offwall':'Hand away','chalk':'Chalk'}[e['kind']]
+            method={'mouth':'Two-stage · rope in mouth','direct':'Direct','unknown':'Cannot tell'}.get(e.get('clip_method'),'Method needed')
+            title=e['hand'].capitalize()+' · '+activity+(f" · #{e['target']}" if e['target'] else '')
+            if e['kind']=='clip':title+='\n'+method
+            tip=f"{title}\nVideo time: {e['start']['seconds']:.3f}–{e['end']['seconds']:.3f} s\n"+e.get('notes','')
+            for col,value in enumerate((title,timecode(e['start']['seconds']),f"{e['end']['seconds']-e['start']['seconds']:.2f} s")):
+                item=QTableWidgetItem(value);item.setToolTip(tip);self.table.setItem(row,col,item)
+        self.table.resizeRowsToContents()
         self.table.blockSignals(False)
         self.point_rows=sorted(d.get('checkpoints',[]),key=lambda p:p['point']['seconds']);self.points_table.setRowCount(len(self.point_rows))
         for row,p in enumerate(self.point_rows):
@@ -186,12 +191,12 @@ class Window(LegacyWindow):
         self.show_frame(base+delta*(1 if single else self.frame_step.value()))
     def select_timeline_event(self,identifier):
         if any(e["id"]==identifier for e in self.document().get("footwork",{}).get("events",[])):
-            self.footwork_panel.select(identifier);return
+            self.review_tabs.setCurrentWidget(self.footwork_panel);self.footwork_panel.select(identifier);return
         if any(e['id']==identifier for e in self.document()['events']) and not any(e['id']==identifier for e in self.visible_events):
             for field in (self.event_kind,self.event_hand):field.blockSignals(True);field.setCurrentIndex(0);field.blockSignals(False)
             self.event_search.blockSignals(True);self.event_search.clear();self.event_search.blockSignals(False);self.refresh()
         row=next((i for i,e in enumerate(self.visible_events) if e['id']==identifier),None)
-        if row is not None:self.table.selectRow(row);self.table.setFocus()
+        if row is not None:self.review_tabs.setCurrentWidget(self.events_card);self.events_body.show();self.table.selectRow(row);self.table.setFocus()
     def clear_boundary(self,key):
         if not self.history:return
         d=copy.deepcopy(self.document());d[key]=None;d['outcome']='unknown' if key=='end' else d['outcome'];d['reviewed']={k:False for k in d['reviewed']};self.commit(d)
@@ -352,10 +357,22 @@ class Window(LegacyWindow):
     def reassign_attempt(self):
         from .context_ui import reassign
         reassign(self)
+    def edit_boundary(self,kind):
+        callback=self.set_start if kind=='start' else self.set_failure
+        d=self.document()
+        if not d or not d.get(kind):return callback()
+        from PySide6.QtWidgets import QMenu
+        from PySide6.QtCore import QPoint
+        button=self.start_button if kind=='start' else self.end_button
+        self.pause();menu=QMenu(button)
+        menu.addAction('Set '+kind+' to current frame',callback)
+        menu.addAction('Jump to marked '+kind,lambda:self.show_frame(d[kind]['frame']))
+        menu.addAction('Remove climb '+kind,lambda:self.clear_boundary(kind))
+        menu.exec(button.mapToGlobal(QPoint(0,button.height())))
     def review_clip_methods(self):
         if not self.document():return
         self.show_view(self.measure_page);self.settings.setValue('inspector_hidden',False);self.refresh_live()
-        self.clip_review.toggle.setChecked(True)
+        self.review_tabs.setCurrentWidget(self.clip_review)
         self.measurement_scroll.ensureWidgetVisible(self.clip_review);self.clip_review.queue.setFocus()
     def export_coaching(self):
         from .coaching_export_ui import export_dialog
@@ -371,21 +388,21 @@ class Window(LegacyWindow):
         d=self.document();now=self.reader.times[self.frame_number] if self.reader else 0
         if hasattr(self,'athlete_button'):
             self.athlete_button.setText(d['climber']+' ▾' if identity.assigned(d) else 'Assign athlete…')
-            self.attempt_context.setText(identity.context(d) if d else '')
-            self.clip_review.refresh(d)
+            self.athlete_button.setToolTip(d['climber']+' · Reassign athlete, session or route' if d else 'Assign an athlete before measuring');self.attempt_context.setText(d['route'] if d else '');self.attempt_context.setToolTip(identity.context(d) if d else '')
+            self.clip_review.refresh(d);count=len(identity.unanswered(d)) if d else 0;self.review_tabs.setTabText(self.review_tabs.indexOf(self.clip_review),'Clips'+(f' · {count}' if count else ''))
         if hasattr(self,'footwork_panel'):self.footwork_panel.refresh(d,now)
         if hasattr(self,"empty_hint"):
             loaded=bool(self.reader);opening=bool(self.worker and self.worker.isRunning())
-            for widget in (self.image,self.precision_scrubber,self.transport,self.boundary_box,self.climb_box,self.events_card):widget.setVisible(loaded)
-            self.empty_hint.setVisible(not loaded);self.empty_panel.hide();self.measure_page.widget(0).layout().activate();self.measurement_scroll.setVisible(loaded and not self.settings.value('inspector_hidden',False,type=bool))
+            for widget in (self.image,self.precision_scrubber,self.transport,self.boundary_box,self.climb_box):widget.setVisible(loaded)
+            self.empty_hint.setVisible(not loaded);self.empty_panel.hide();self.measure_page.widget(0).layout().activate();self.analysis_panel.setVisible(loaded and not self.settings.value('inspector_hidden',False,type=bool))
             foot_pending=d.get('footwork',{}).get('pending') if d else None
-            self.active_timers.setVisible(loaded and not self.measurement_scroll.isVisible() and bool(d and (d['open_events'] or foot_pending)))
+            self.active_timers.setVisible(loaded and not self.analysis_panel.isVisible() and bool(d and (d['open_events'] or foot_pending)))
             self.active_timers.setText((f"Both feet off running: {max(0,now-foot_pending['start']['seconds']):.1f} s · " if foot_pending else '')+' · '.join(f"{e['hand'].capitalize()} {e['kind']} running: {max(0,now-e['start']['seconds']):.1f} s" for e in (d['open_events'] if d else [])))
             self.drop_title.setText(f'Opening {self.video_path.name}…' if opening and self.video_path else 'Drop climbing videos here')
             self.drop_choose.setVisible(not opening);self.drop_note.setText('Reading the file once: checksum and every frame timestamp. Cached afterwards.' if opening else 'MP4, MOV or MKV · originals stay where they are, nothing is uploaded')
             if loaded:self.position.setText(f'<span style="font-size:19px;font-weight:600">{timecode(now)}</span>&nbsp;&nbsp;<span style="font-size:11px;color:{"#b2b8bf" if self.theme=="dark" else "#59616b"}">frame {self.frame_number}</span>')
-            self.start_button.setText(f"Replace start · {d['start']['seconds']:.3f} s" if d and d['start'] else 'Mark start');self.start_clear.setVisible(bool(d and d['start']))
-            self.end_button.setText(f"Replace end · {d['end']['seconds']:.3f} s · "+{'failed':'fell','completed':'topped'}.get(d['outcome'],d['outcome']) if d and d['end'] else 'Mark end')
+            self.start_value.setText('Start '+timecode(d['start']['seconds']) if d and d['start'] else 'Climb start not marked');self.start_button.setText('Edit' if d and d['start'] else 'Mark start');self.start_clear.setVisible(bool(d and d['start']))
+            self.end_value.setText('End '+timecode(d['end']['seconds'])+' · '+{'failed':'Fell','completed':'Topped'}.get(d['outcome'],d['outcome']) if d and d['end'] else 'Climb end not marked');self.end_button.setText('Edit' if d and d['end'] else 'Mark end')
             self.end_edit.setVisible(bool(d and d['end']));self.end_clear.setVisible(bool(d and d['end']))
             failure=self.save_error or self.workspace_error or self.workspace.load_error
             self.save_state.setProperty('state','error' if failure else 'ok');self.save_state.setStyleSheet('font-weight:600;' if failure else '')
@@ -409,10 +426,10 @@ class Window(LegacyWindow):
             if control.property('role')!=role:control.setProperty('role',role);control.setStyleSheet('')
             visible=pending if pending and pending['start']['seconds']<=now else current
             name=kind.capitalize();text='Start '+name.lower()
-            if pending and visible:text=f'Stop {name.lower()}\n{now-visible["start"]["seconds"]:.1f} s'
+            if pending and visible:text=f'■ Stop {name.lower()}\n{now-visible["start"]["seconds"]:.1f} s'
             elif pending:text=f'■ {name} · seek forward'
             elif visible:text=f'{name} · {visible["end"]["seconds"]-visible["start"]["seconds"]:.1f} s\nEdit interval'
-            control.setText(text);control.setEnabled(bool(d))
+            control.setText(text);control.setAccessibleName(hand.capitalize()+' hand · '+('Stop ' if pending else 'Edit ' if visible else 'Start ')+kind);control.setEnabled(bool(d))
             if pending and kind=='clip':control.setToolTip(f"Quickdraw {pending['target']} · timing is saved when stopped; choose its method afterwards")
             if kind=='chalk' and d:control.setToolTip(f"{hand.capitalize()} hand chalk · {sum(1 for e in d['events'] if e['kind']=='chalk' and e['hand']==hand)} recorded · press to start or stop (key {control.key})")
             self.hand_timer_cancel[kind,hand].setVisible(bool(pending))
@@ -563,13 +580,21 @@ class Window(LegacyWindow):
         if self.library.bulk and self.library.bulk.isRunning():
             self.statusBar().showMessage('A preview queue is running. Manage or cancel it in Library.',6000);return
         if self.reader.backend=='preview':return
+        key=str(self.video_path.resolve())
+        if key not in self.library.meta:
+            from .library import probe
+            try:self.library.meta[key]=probe(self.video_path)
+            except Exception as error:self.error('Cannot estimate preview storage: '+str(error));return
+        if not self.library.confirm_previews([key]):return
         self.pause()
         from .preview_cache import PreviewWorker
         self.preview_worker=PreviewWorker(self.video_path,copy.deepcopy(self.reader.index),ROOT/'artifacts'/'preview-cache')
-        self.preview_worker.progress.connect(lambda value:self.preview_button.setText(f'Preparing preview {value}% · cancel'))
+        def preview_progress(value):
+            self.preview_button.setText(f'Preparing preview {value}% · cancel');self.statusBar().showMessage(f'Preparing local preview · {Path(key).name} · {value}% · cancel in Video options')
+        self.preview_worker.progress.connect(preview_progress)
         self.preview_worker.ready.connect(self.preview_ready)
         self.preview_worker.error.connect(lambda message:self.error('Preview preparation failed: '+message))
-        self.preview_worker.finished.connect(self.refresh_preview_status)
+        self.preview_worker.finished.connect(self.refresh_preview_status);self.preview_worker.finished.connect(lambda:self.statusBar().showMessage('Preview preparation stopped. Video options shows whether it completed; errors are reported separately.',8000))
         self.preview_button.setText('Cancel preparation');self.preview_worker.start()
     def preview_ready(self,digest):
         if not self.reader or self.reader.index['source']['sha256']!=digest:return
@@ -585,7 +610,7 @@ class Window(LegacyWindow):
         if not hasattr(self,'preview_button'):return
         running=bool(self.preview_worker and self.preview_worker.isRunning())
         cached=bool(self.reader and self.reader.backend=='preview')
-        if not running:self.preview_button.setText('● Smooth preview' if cached else 'Prepare smooth preview')
+        if not running:self.preview_button.setText('✓ Preview ready' if cached else 'Prepare preview…')
         self.preview_button.setEnabled(bool(self.reader) and (running or not cached));self.decoder_choice.setEnabled(not cached)
         if cached:
             self.decoder_choice.blockSignals(True);self.decoder_choice.setCurrentIndex(2);self.decoder_choice.blockSignals(False)
@@ -850,7 +875,7 @@ class Window(LegacyWindow):
         if hasattr(self,'project_button'):self.project_button.setText(self.project.name+'  ▾')
         self.setWindowTitle(APP_NAME+' · '+self.project.name+(' · '+self.video_path.name if self.video_path else ''))
     def toggle_events(self):
-        self.events_body.setVisible(not self.events_body.isVisible());self.settings.setValue('events_open',self.events_body.isVisible());self.refresh()
+        self.review_tabs.setCurrentWidget(self.events_card);self.events_body.show();self.refresh()
     def show_about(self):
         QMessageBox.about(self,'About '+APP_NAME,f'<b>{APP_NAME} {__version__}</b><p>Frame-accurate climbing video measurements, fully local.</p><p>MIT License · <a href="https://github.com/slawek-private/climbing-efficiency-analyzer">github.com/slawek-private/climbing-efficiency-analyzer</a></p>')
     def show_diagnostics(self):

@@ -257,3 +257,34 @@ Recovery is descriptive; time outside recorded recovery is unclassified.
 HTML and PDF exports follow the overview with evidence, coaching actions and detailed
 measurement appendices. HTML controls are local and change presentation only. The
 coaching report retains optional local replay. [Report generation](REPORTS.md).
+
+## 0.25: compact analysis and stable controls
+
+The video/attempt navigator is one row above the footage. **Video X of N ▾**
+opens every project source, including missing sources that can be located again.
+The neighbouring chooser opens exact athlete attempts; its tooltip retains the
+recording and route context. Opening projects still takes you to Videos.
+
+Play, step, speed, timecode and Fit share one transport row. **Video options ▾**
+contains timeline range, local preview preparation and Hide/Show controls. Preview
+preparation explains estimated cache space before starting; its progress appears
+in the status bar. Original frame numbers and timestamps are preserved.
+
+Hand timers stay above a scrolling review area with **Clips**, **Events**,
+**Points** and **Feet** tabs. Stop controls remain visible while reviewing another
+page. Closing a clip opens its method review without a blocking dialog. Select
+Direct, Two-stage (rope held in the mouth), or Cannot tell with a reason.
+The Clips tab and session bar retain pending-answer counts.
+
+Boundary values are separate from their **Edit** actions. Edit opens a menu to
+jump to the mark, set it to the current frame or remove it; opening this menu
+does not change measurements. Keyboard S/E still mark directly.
+
+Events show activity/hand/target and clipping method in one readable description,
+with video time and duration beside it. Activity, hand and search filters affect
+presentation only. Timeline selection opens the correct review page. The tour
+opens Points and Feet when describing their tools.
+
+Comparison uses the shared **Align / checkpoint** field and athlete/attempt
+selection once. Tile names and decode status are outside the video; annotation
+lanes remain read-only and playback uses one shared clock.

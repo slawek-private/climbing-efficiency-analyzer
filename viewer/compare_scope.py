@@ -1,6 +1,7 @@
 """Shared route, attempt and checkpoint selection for every comparison view."""
 from PySide6.QtCore import Signal,Qt
 from PySide6.QtWidgets import QWidget,QHBoxLayout,QLabel,QComboBox,QPushButton,QDialog,QVBoxLayout,QTreeWidget,QTreeWidgetItem,QDialogButtonBox,QCheckBox,QSizePolicy
+from .controls import Button as QPushButton
 from . import identity as identities
 
 
@@ -22,11 +23,11 @@ class CompareScope(QWidget):
         self.route=QComboBox();self.reference=QComboBox();self.point=QComboBox();self.subjects=QPushButton('Choose athletes & attempts…')
         for control in (self.athlete,self.team,self.route,self.reference,self.point):
             control.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon);control.setMinimumContentsLength(10);control.setMinimumWidth(90);control.setSizePolicy(QSizePolicy.Policy.Ignored,QSizePolicy.Policy.Fixed)
-        for name,control in [('Route',self.route),('Reference',self.reference),('Checkpoint',self.point)]:layout.addWidget(QLabel(name));layout.addWidget(control,1)
+        for name,control in [('Route',self.route),('Reference',self.reference),('Align / checkpoint',self.point)]:layout.addWidget(QLabel(name));layout.addWidget(control,1)
         layout.addWidget(self.subjects);self.subjects.clicked.connect(self.choose_subjects)
         self.intent.currentIndexChanged.connect(self.scope_changed);self.athlete.currentIndexChanged.connect(self.scope_changed);self.history.toggled.connect(self.scope_changed)
         self.team.currentIndexChanged.connect(self.scope_changed)
-        self.route.currentIndexChanged.connect(self.route_changed);self.reference.currentIndexChanged.connect(self.changed);self.point.currentIndexChanged.connect(self.changed)
+        self.route.currentIndexChanged.connect(self.route_changed);self.reference.currentIndexChanged.connect(self.changed);self.point.setAccessibleName('Comparison alignment and checkpoint');self.point.setToolTip('Shared alignment for Side by side and checkpoint for the overview. Climb start or first arrival at the chosen named point.');self.point.currentIndexChanged.connect(self.changed)
     def set_context(self,organisation,session_id,current):
         changed=session_id!=self.session_id;self.organisation=organisation;self.session_id=session_id;self.current=current
         session=identities.entry(organisation,'sessions',session_id);self.intent.setEnabled(bool(session));self.intent.blockSignals(True)

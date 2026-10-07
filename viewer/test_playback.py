@@ -94,7 +94,7 @@ def test_four_timer_shortcuts_buttons_and_typing(tmp_path,monkeypatch):
     assert all(b.property('role')=='start' and not w.hand_timer_cancel[k].isVisibleTo(w) for k,b in w.hand_timer_buttons.items())
     assert w.draw.value()==2 and all(e['target']==1 for e in w.document()['events'] if e['kind']=='clip')
     initial=w.theme;w.toggle_theme();assert w.theme!=initial and w.precision_scrubber.dark==(w.theme=='dark');w.toggle_theme();assert w.theme==initial
-    w.events_body.show();app.processEvents();assert w.table.isVisible() and w.workspace_tabs is None
+    w.toggle_events();app.processEvents();assert w.table.isVisible() and w.workspace_tabs is None
     before_name=w.climber.text();w.attempt.setFocus();w.attempt.selectAll();app.processEvents();QTest.keyClicks(w.attempt,'2');assert w.climber.text()==before_name and not w.document()['open_events']
     w.image.setFocus();app.processEvents();w.show_frame(10);monkeypatch.setattr(w,'choose_climb_outcome',lambda:'failed');w.set_failure()
     from PySide6.QtCore import QSettings

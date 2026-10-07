@@ -1,6 +1,6 @@
 [project]
 name = "climbing-efficiency-analyzer"
-version = "0.24.0"
+version = "0.25.0"
 description = "Local climbing video measurement viewer for Windows and macOS"
 requires-python = "==3.12.11"
 dependencies = [

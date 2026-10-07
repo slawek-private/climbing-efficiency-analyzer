@@ -1,30 +1,35 @@
-"""Compact project-video switcher; no decoding, thumbnails or private asset copies."""
+"""One project source chooser beside the athlete/attempt chooser."""
 from pathlib import Path
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QWidget,QHBoxLayout,QPushButton,QScrollArea
+from PySide6.QtWidgets import QWidget, QHBoxLayout, QMenu, QSizePolicy
+from .controls import Button
 
 class VideoNavigation(QWidget):
-    def __init__(self,window):
+    def __init__(self, window):
         super().__init__();self.window=window;self.paths=();self.buttons=[]
-        row=QHBoxLayout(self);row.setContentsMargins(0,0,0,0);row.setSpacing(6)
-        self.count=QPushButton('Videos');self.count.setProperty('role','quiet');self.count.setToolTip('See every video in this project in the Library');self.count.clicked.connect(lambda:window.show_view(window.library));row.addWidget(self.count)
-        self.scroll=QScrollArea();self.scroll.setWidgetResizable(True);self.scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff);self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded);self.scroll.setFixedHeight(50)
-        self.content=QWidget();self.line=QHBoxLayout(self.content);self.line.setContentsMargins(0,0,0,0);self.line.setSpacing(6);self.scroll.setWidget(self.content);row.addWidget(self.scroll,1)
-    def refresh(self,paths,current):
-        paths=tuple(paths);self.setVisible(bool(paths));self.count.setText(f'Videos · {len(paths)}')
+        row=QHBoxLayout(self);row.setContentsMargins(0,0,0,0)
+        self.count=Button();self.count.setProperty('role','quiet');self.count.setMinimumWidth(110)
+        self.count.setSizePolicy(QSizePolicy.Policy.Ignored,QSizePolicy.Policy.Fixed)
+        self.menu=QMenu(self.count);self.count.setMenu(self.menu);row.addWidget(self.count)
+    def refresh(self, paths, current):
+        paths=tuple(paths);self.setVisible(bool(paths))
         if paths!=self.paths:
-            while self.line.count():
-                item=self.line.takeAt(0)
-                if item.widget():item.widget().deleteLater()
-            self.paths=paths;self.buttons=[]
+            self.menu.clear();self.paths=paths;self.buttons=[]
             for index,path in enumerate(paths):
-                name=Path(path).name;b=QPushButton();b.setCheckable(True);b.setFixedWidth(170);b.setFixedHeight(34);b.setAccessibleName(f'Video {index+1}: {name}');b.clicked.connect(lambda checked=False,i=index:self.choose(i));self.line.addWidget(b);self.buttons.append(b)
-            self.line.addStretch()
-        for index,(path,b) in enumerate(zip(paths,self.buttons)):
-            active=path==current;missing=not Path(path).is_file();name=Path(path).name
-            b.setChecked(active);b.setText(b.fontMetrics().elidedText(f'{index+1} · '+name,Qt.TextElideMode.ElideMiddle,145));b.setToolTip(('Open now · ' if active else 'Locate missing video · ' if missing else 'Open video · ')+name+'\n'+path);b.setAccessibleDescription('Currently open' if active else 'Missing; click to locate' if missing else 'Click to open')
-            if active:self.scroll.ensureWidgetVisible(b,10,0)
+                action=self.menu.addAction(f'{index+1} · {Path(path).name}');action.setCheckable(True)
+                action.setToolTip(path);action.triggered.connect(lambda checked=False,i=index:self.choose(i));self.buttons.append(action)
+            self.menu.addSeparator();self.menu.addAction('All project videos…',lambda:self.window.show_view(self.window.library))
+        index=paths.index(current) if current in paths else -1
+        title=f'Video {index+1} of {len(paths)} · {Path(current).name} ▾' if index>=0 else f'Choose video · {len(paths)} ▾'
+        prefix=f'Video {index+1} of {len(paths)}' if index>=0 else f'Choose video · {len(paths)}'
+        remaining=max(0,self.width()-35-self.count.fontMetrics().horizontalAdvance(prefix))
+        suffix=self.count.fontMetrics().elidedText(' · '+Path(current).name,Qt.TextElideMode.ElideMiddle,remaining) if index>=0 else ''
+        self.count.setText(prefix+suffix+' ▾')
+        self.count.setAccessibleName(title);self.count.setToolTip(title+'\nChoose any project video; missing sources can be located here.')
+        for path,action in zip(paths,self.buttons):action.setChecked(path==current)
+    def resizeEvent(self,event):
+        super().resizeEvent(event)
+        if self.paths:self.refresh(self.paths,str(self.window.video_path.resolve()) if self.window.video_path else None)
     def choose(self,index):
         self.window.select_video(index)
-        current=str(self.window.video_path.resolve()) if self.window.video_path else None
-        self.refresh(self.window.workspace.videos,current)
+        self.refresh(self.window.workspace.videos,str(self.window.video_path.resolve()) if self.window.video_path else None)

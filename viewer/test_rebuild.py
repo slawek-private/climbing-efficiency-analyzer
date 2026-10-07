@@ -30,7 +30,7 @@ def test_empty_state_then_loaded_video_and_autosave_without_dialog(tmp_path,monk
     assert w.empty_hint.isVisible() and not w.image.isVisible() and not w.transport.isVisible() and not w.measurement_scroll.isVisible() and w.save_state.text()==''
     path=tmp_path/'anna.mkv';index=synthetic(path,40);w.video_path=path;w.index_ready(index);app.processEvents()
     assert not w.empty_hint.isVisible() and w.image.isVisible() and w.transport.isVisible() and w.boundary_box.isVisible() and not w.empty_panel.isVisible()
-    w.show_frame(5);w.set_start();assert w.start_button.text()=='Replace start · 0.500 s' and w.start_clear.isVisible() and '00:00.500<' in w.position.text() and 'frame 5<' in w.position.text()
+    w.show_frame(5);w.set_start();assert w.start_button.text()=='Edit' and w.start_value.text()=='Start 00:00.500' and w.start_clear.isVisible() and '00:00.500<' in w.position.text() and 'frame 5<' in w.position.text()
     assert w.save_state.text()=='Saving…'
     wait_until(app,lambda:not w.autosave_timer.isActive())
     saved=load(w.label_path);assert saved['start']['frame']==5 and w.label_path.parent==w.project.labels and w.save_state.text()=='✓ Saved' and not w.dirty()

@@ -58,6 +58,10 @@ installer's SHA-256 and release compatibility manifest (OS, architecture and
 supported source versions). Downloads wait for an explicit restart. Recording
 tips and the guided tour are available from Help, when you want them.
 
+**0.25.0:** a compact video-first layout, fixed hand controls, separate review views,
+clearer focus/selection states, and quieter comparison/library/report presentation.
+See [release notes](docs/RELEASE_0.25.0.md).
+
 **0.24.0:** required athlete/session/route assignment, clear training and competition
 flows, athlete history and per-event clipping decisions with reminders.
 Missing clips and unknown methods stay distinct; incomplete exports are marked drafts.

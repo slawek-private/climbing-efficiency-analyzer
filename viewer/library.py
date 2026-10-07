@@ -7,7 +7,8 @@ import av
 from PIL import Image
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout,QGridLayout, QLabel, QPushButton, QTableWidget, QTableWidgetItem,
-                               QAbstractItemView, QHeaderView, QMessageBox,QCheckBox,QMenu,QComboBox)
+                               QAbstractItemView, QHeaderView, QMessageBox,QCheckBox,QMenu,QComboBox,QSizePolicy)
+from .controls import Button as QPushButton
 from . import storage
 from . import identity
 
@@ -101,8 +102,8 @@ class LibraryTab(QWidget):
         filters=QHBoxLayout();self.session_filter=QComboBox()
         for label,key in [('Current session + unassigned','current'),('All sessions','all'),('Needs assignment','pending')]:self.session_filter.addItem(label,key)
         self.athlete_filter=QComboBox();self.athlete_filter.addItem('All athletes','');self.route_filter=QComboBox();self.route_filter.addItem('All route versions','')
-        for name,control in [('Session scope',self.session_filter),('Athlete',self.athlete_filter),('Route version',self.route_filter)]:control.setAccessibleName(name);filters.addWidget(control,1);control.currentIndexChanged.connect(self.render)
-        assign=QPushButton('Assign selected…');assign.clicked.connect(self.assign_selected);filters.addWidget(assign);layout.addLayout(filters)
+        for name,control in [('Session scope',self.session_filter),('Athlete',self.athlete_filter),('Route version',self.route_filter)]:control.setAccessibleName(name);control.setMinimumWidth(90);control.setSizePolicy(QSizePolicy.Policy.Ignored,QSizePolicy.Policy.Fixed);filters.addWidget(control,1);control.currentIndexChanged.connect(self.render)
+        self.assign_button=assign=QPushButton('Assign selected…');assign.clicked.connect(self.assign_selected);filters.addWidget(assign);layout.addLayout(filters)
         intro.setWordWrap(True);intro.setObjectName('muted');layout.addWidget(intro)
         bar = QHBoxLayout();self.buttons = {};self.more_actions={};more=QPushButton("More ▾");more_menu=QMenu(more);more.setMenu(more_menu)
         for key, text, callback, tip in [
@@ -116,12 +117,13 @@ class LibraryTab(QWidget):
             if key in ("add","selected","cancel"):bar.addWidget(b)
             else:
                 b.hide();action=more_menu.addAction(text);action.setToolTip(tip);action.triggered.connect(callback);self.more_actions[key]=action
-        self.buttons['selected'].setProperty('role', 'primary');self.buttons['cancel'].setEnabled(False);bar.addStretch();bar.addWidget(more);layout.addLayout(bar)
+        self.buttons['add'].setProperty('role', 'primary');self.buttons['cancel'].setEnabled(False);bar.addStretch();bar.addWidget(more);layout.addLayout(bar)
+        self.selection_hint=QLabel();self.selection_hint.setObjectName('muted');self.selection_hint.setWordWrap(True);layout.addWidget(self.selection_hint)
         self.table = QTableWidget(0, len(COLUMNS));self.table.setHorizontalHeaderLabels(COLUMNS);self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows);self.table.setAlternatingRowColors(True);self.table.setShowGrid(False);self.table.verticalHeader().hide()
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents);self.table.horizontalHeader().setStretchLastSection(False);self.table.horizontalHeader().setSectionResizeMode(0,QHeaderView.ResizeMode.Stretch);self.table.horizontalHeader().moveSection(10,1);self.table.horizontalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignLeft|Qt.AlignmentFlag.AlignVCenter)
         self.details=QCheckBox('Show recording details');self.details.toggled.connect(self.show_details);layout.addWidget(self.details);self.show_details(False)
-        self.table.cellDoubleClicked.connect(self.open_row);self.table.setToolTip('Double-click a video to open it in the Video workspace.');layout.addWidget(self.table, 1)
+        self.table.itemSelectionChanged.connect(self.selection_changed);self.table.cellDoubleClicked.connect(self.open_row);self.table.setToolTip('Double-click a video to open it in the Video workspace.');layout.addWidget(self.table, 1)
         self.summary = QLabel();self.summary.setObjectName('muted');self.summary.setWordWrap(True);layout.addWidget(self.summary)
     def show_details(self,show):
         for column in (2,3,4,5,6,9):self.table.setColumnHidden(column,not show)
@@ -180,7 +182,9 @@ class LibraryTab(QWidget):
         return bool(meta.get('sha256')) and (storage.folders(self.window.data_root())[0]/meta['sha256']/'manifest.json').exists()
     def render(self):
         self.refresh_filters()
-        self.update_heading();paths = self.paths();self.table.setRowCount(len(paths));states = self.window.workspace.states;wanted = 0;candidates = low_fps = low_res = hdr = 0
+        self.update_heading();paths = self.paths()
+        if tuple(paths)!=getattr(self,'displayed_paths',()):self.table.clearSelection();self.displayed_paths=tuple(paths)
+        self.table.setRowCount(len(paths));states = self.window.workspace.states;wanted = 0;candidates = low_fps = low_res = hdr = 0
         for row, path in enumerate(paths):
             m = self.meta.get(path, {});state = states.get(path)
             if not Path(path).is_file():values=[Path(path).name]+['']*6+['Missing — double-click to locate']+['']*2
@@ -210,7 +214,7 @@ class LibraryTab(QWidget):
                 self.table.setItem(row, col, item)
             action=self.table.cellWidget(row,11)
             if action is None:
-                action=QPushButton();action.clicked.connect(lambda checked=False,b=action:self.row_action(b.property('videoRow'),True));self.table.setCellWidget(row,11,action)
+                action=QPushButton();action.setProperty('role','quiet');action.clicked.connect(lambda checked=False,b=action:self.row_action(b.property('videoRow'),True));self.table.setCellWidget(row,11,action)
             action.setProperty('videoRow',row);action.setText('Locate…' if missing else 'Return to video' if current else 'Open')
         root = self.window.data_root();cache = sum(r['preview_bytes']+r['index_bytes'] for r in storage.entries(root));limit = float(self.window.settings.value('cache_limit_gb', storage.DEFAULT_LIMIT_GB))
         self.table.setColumnHidden(12,self.session_filter.currentData()=='current')
@@ -219,10 +223,20 @@ class LibraryTab(QWidget):
         self.summary.setText(f'{len(paths)} videos'+(' · '+', '.join(flags) if flags else '')+f' · cache {storage.human(cache)} of {limit:g} GB · {storage.human(free)} free'
                              +(f' · recommended previews to prepare: ~{storage.human(wanted)}' if wanted else ''))
         running = bool(self.bulk and self.bulk.isRunning());self.buttons['cancel'].setEnabled(running)
-        for key in ('selected', 'remove'):self.buttons[key].setEnabled(not running)
+        self.selection_changed()
         self.buttons['recommended'].setEnabled(not running and candidates > 0)
         self.buttons['recommended'].setText(f'Prepare {candidates} recommended' if candidates else 'Nothing to prepare')
         for key,action in self.more_actions.items():action.setEnabled(self.buttons[key].isEnabled());action.setText(self.buttons[key].text())
+    def selection_changed(self):
+        selected={item.row() for item in self.table.selectedItems()};paths=self.paths()
+        running=bool(self.bulk and self.bulk.isRunning())
+        eligible=[paths[r] for r in selected if r<len(paths) and Path(paths[r]).is_file() and 'error' not in self.meta.get(paths[r],{}) and not self.preview_ready(self.meta.get(paths[r],{}))]
+        self.buttons['selected'].setEnabled(bool(eligible) and not running)
+        self.selection_hint.setText('Preview queue running · Cancel queue to stop it.' if running else 'Select videos to prepare previews or assign athletes.' if not selected else f'{len(selected)} selected · {len(eligible)} need a preview. Assign selected changes their athlete, session and route.')
+        self.buttons['selected'].setToolTip('Prepare previews for selected videos.' if eligible else 'Select videos without a prepared preview first.')
+        self.buttons['remove'].setEnabled(bool(selected) and not running);self.assign_button.setEnabled(bool(selected))
+        self.buttons['selected'].setAccessibleDescription('Select videos without a prepared preview first.' if not eligible else 'Queue local previews for selected videos.')
+        if 'remove' in self.more_actions:self.more_actions['remove'].setEnabled(self.buttons['remove'].isEnabled())
     def row_action(self,row,open_video):
         if open_video:self.open_row(row,0)
         else:self.table.clearSelection();self.table.selectRow(row);self.prepare(False)
@@ -234,15 +248,19 @@ class LibraryTab(QWidget):
         queue = [paths[r] for r in rows if Path(paths[r]).is_file() and 'error' not in self.meta.get(paths[r], {}) and not self.preview_ready(self.meta.get(paths[r], {}))
                  and (not recommended or (self.meta.get(paths[r]) and recommendation(self.meta[paths[r]]) == 'Recommended'))]
         if not queue:return QMessageBox.information(self, 'Nothing to prepare', 'Every chosen video already has a smooth preview, or none is recommended.')
+        if not self.confirm_previews(queue):return
+        for i,p in enumerate(queue,1):self.status[p] = f'Queued {i}/{len(queue)}'
+        self.bulk = BulkWorker(queue, self.window.data_root());self.bulk.progress.connect(self.progress);self.bulk.done.connect(self.finished_one);self.bulk.failed.connect(lambda p, e:self.progress(p, 'Failed: '+e))
+        self.bulk.finished.connect(self.queue_finished);self.bulk.start();self.render()
+    def confirm_previews(self,queue):
         estimate = sum(self.meta.get(p, {}).get('preview_bytes') or 0 for p in queue);limit = float(self.window.settings.value('cache_limit_gb', storage.DEFAULT_LIMIT_GB))*2**30
         if estimate > limit and QMessageBox.question(self, 'Over the storage limit', f'These previews need about {storage.human(estimate)}, more than the {storage.human(limit)} storage limit. '
                 'Older previews would be removed to make room. Continue? (Raise the limit in Storage…)') != QMessageBox.StandardButton.Yes:return
         free=shutil.disk_usage(self.window.data_root()).free
-        if estimate+512*2**20>free:return QMessageBox.warning(self,'Not enough free storage',f'Estimated previews: {storage.human(estimate)}; free: {storage.human(free)}. Keep at least 512 MB free. Reduce the selection or clear unused previews.')
-        if QMessageBox.question(self,'Prepare local previews',f'{len(queue)} videos · estimated {storage.human(estimate)} (sample estimate, actual size varies) · {storage.human(free)} free. Frames and original timestamps are preserved. Start the background queue?')!=QMessageBox.StandardButton.Yes:return
-        for i,p in enumerate(queue,1):self.status[p] = f'Queued {i}/{len(queue)}'
-        self.bulk = BulkWorker(queue, self.window.data_root());self.bulk.progress.connect(self.progress);self.bulk.done.connect(self.finished_one);self.bulk.failed.connect(lambda p, e:self.progress(p, 'Failed: '+e))
-        self.bulk.finished.connect(self.queue_finished);self.bulk.start();self.render()
+        if estimate+512*2**20>free:
+            QMessageBox.warning(self,'Not enough free storage',f'Estimated previews: {storage.human(estimate)}; free: {storage.human(free)}. Keep at least 512 MB free. Reduce the selection or clear unused previews.');return False
+        estimate_text=storage.human(estimate)+' (sample estimate; actual size varies)' if all(self.meta.get(p,{}).get('preview_bytes') for p in queue) else 'not yet available'
+        return QMessageBox.question(self,'Prepare local previews',f'{len(queue)} video(s) · estimated cache: {estimate_text} · {storage.human(free)} free. Creates a local frame cache for smoother seeking. Originals, frames and timestamps are unchanged. Manage cache size in File → Storage. Start in the background?')==QMessageBox.StandardButton.Yes
     def progress(self, path, text):
         self.status[path] = text;row = self.paths().index(path) if path in self.paths() else -1
         if row >= 0 and self.table.item(row, 7):self.table.item(row, 7).setText(text)

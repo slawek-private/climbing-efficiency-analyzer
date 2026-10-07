@@ -6,6 +6,7 @@ from PySide6.QtCore import Qt, QDate
 from PySide6.QtWidgets import (QWidget,QDialog,QVBoxLayout,QHBoxLayout,QFormLayout,QLabel,QPushButton,
     QComboBox,QLineEdit,QDateEdit,QDialogButtonBox,QTableWidget,QTableWidgetItem,QCheckBox,
     QTreeWidget,QTreeWidgetItem,QMenu,QInputDialog,QSizePolicy)
+from .controls import Button as QPushButton
 from . import identity
 from .labels import save
 
@@ -95,7 +96,7 @@ class AssignmentDialog(QDialog):
         box=QVBoxLayout(self);note=QLabel('Choose the session, athlete and route version for every row. Files with multiple athletes need a separate assigned attempt for each climb. No names are inferred from filenames.');note.setWordWrap(True);box.addWidget(note)
         self.session=combo(w.workspace.organisation,'sessions',w.workspace.session_id, 'Choose session…');self.session.setAccessibleName('Session for these attempts')
         bar=QHBoxLayout();bar.addWidget(QLabel('Session'));bar.addWidget(self.session,1)
-        new=QPushButton('New session…');new.clicked.connect(self.new_session);bar.addWidget(new);box.addLayout(bar)
+        new=QPushButton('New session…');new.setProperty('role','quiet');new.clicked.connect(self.new_session);bar.addWidget(new);box.addLayout(bar)
         bar=QHBoxLayout();self.bulk=combo(w.workspace.organisation,'athletes');bar.addWidget(self.bulk,1)
         apply=QPushButton('Assign to checked rows');apply.clicked.connect(self.bulk_assign);bar.addWidget(apply)
         for text,callback in [('Add athlete…',self.add_athlete),('Add route…',self.add_route)]:
@@ -201,17 +202,17 @@ class SessionBar(QWidget):
     def __init__(self,w):
         super().__init__();self.w=w;line=QHBoxLayout(self);line.setContentsMargins(0,0,0,0)
         self.sessions=QComboBox();self.sessions.setAccessibleName('Current session');self.sessions.setMinimumWidth(200);self.sessions.setSizePolicy(QSizePolicy.Policy.Ignored,QSizePolicy.Policy.Fixed);line.addWidget(self.sessions,1)
-        new=QPushButton('New session…');new.clicked.connect(lambda:create_session(w));line.addWidget(new)
-        manage=QPushButton('Athletes & sessions ▾');menu=QMenu(manage);manage.setMenu(menu);line.addWidget(manage)
+        new=QPushButton('New session…');new.setProperty('role','quiet');new.clicked.connect(lambda:create_session(w));line.addWidget(new)
+        manage=QPushButton('Athletes & sessions ▾');manage.setProperty('role','quiet');menu=QMenu(manage);manage.setMenu(menu);line.addWidget(manage)
         for title,callback in [('Add athlete…',lambda:self.add()),('Rename / edit athlete…',self.edit),('Athlete history…',self.history),('Add route version…',lambda:create_route(w)),('Organise existing attempts…',lambda:organise(w))]:menu.addAction(title,callback)
         self.sessions.currentIndexChanged.connect(self.changed)
-        self.pending=QPushButton();self.pending.clicked.connect(self.review_pending);line.addWidget(self.pending)
+        self.pending=QPushButton();self.pending.setProperty('role','quiet');self.pending.clicked.connect(self.review_pending);line.addWidget(self.pending)
     def refresh(self):
         self.sessions.blockSignals(True);self.sessions.clear();self.sessions.addItem('Unorganised drafts','')
         for item in self.w.workspace.organisation['sessions']:self.sessions.addItem(identity.session_label(item),item['id'])
         self.sessions.setCurrentIndex(max(0,self.sessions.findData(self.w.workspace.session_id)));self.sessions.blockSignals(False)
         count=sum(len(identity.unanswered(d)) for d in self.w.workspace.documents())
-        self.pending.setText(f'{count} clip answer(s) needed');self.pending.setVisible(count>0)
+        self.pending.setText(f'{count} clip methods needed');self.pending.setVisible(count>0)
     def changed(self):
         self.w.workspace.session_id=self.sessions.currentData() or ''
         if persist(self.w):self.w.refresh_collection();self.w.library.activate()
@@ -274,7 +275,8 @@ class AttemptNavigation(QComboBox):
             groups.setdefault(a.get('athlete',{}).get('id',d['climber']),[]).append((path,state))
         for records in groups.values():
             for path,state in records:
-                d=state['document'];self.addItem(d['climber']+' · attempt '+d['attempt']+' · '+d['route']+' · '+Path(path).name,(path,d,state.get('frame',0)))
+                d=state['document'];self.addItem(d['climber']+' · attempt '+d['attempt'],(path,d,state.get('frame',0)))
+                self.setItemData(self.count()-1,d['route']+' · '+Path(path).name,Qt.ItemDataRole.ToolTipRole)
                 if d.get('attempt_id')==current:selected=self.count()-1
         self.setCurrentIndex(selected);self.setPlaceholderText('Choose an athlete’s attempt');self.blockSignals(False)
     def open(self,index):
@@ -285,18 +287,16 @@ class AttemptNavigation(QComboBox):
 class ClipReview(QWidget):
     def __init__(self,w):
         super().__init__();self.w=w;self.event_id=None;root=QVBoxLayout(self);root.setContentsMargins(0,0,0,0)
-        self.toggle=QPushButton('Clipping review ▸');self.toggle.setCheckable(True);root.addWidget(self.toggle)
-        self.body=QWidget();box=QVBoxLayout(self.body);box.setContentsMargins(0,0,0,0);box.setSpacing(6);root.addWidget(self.body);self.body.hide();self.toggle.toggled.connect(self.body.setVisible)
+        self.body=QWidget();box=QVBoxLayout(self.body);box.setContentsMargins(0,0,0,0);box.setSpacing(6);root.addWidget(self.body)
         self.queue=QComboBox();self.queue.setAccessibleName('Clip method review queue');self.queue.setSizePolicy(QSizePolicy.Policy.Ignored,QSizePolicy.Policy.Fixed);self.queue.currentIndexChanged.connect(self.select);box.addWidget(self.queue)
-        self.title=QLabel();self.title.setWordWrap(True);box.addWidget(self.title)
-        line=QHBoxLayout();self.buttons={}
-        for label,method in [('Direct','direct'),('Two-stage\nrope in mouth','mouth'),('Cannot tell','unknown')]:
-            button=QPushButton(label);button.setCheckable(True);button.setAutoExclusive(True);button.setAccessibleName(label.replace('\n',' '));button.clicked.connect(lambda checked=False,m=method:self.answer(m));line.addWidget(button);self.buttons[method]=button
+        line=QVBoxLayout();self.buttons={}
+        for label,method in [('Direct','direct'),('Two-stage · rope in mouth','mouth'),('Cannot tell','unknown')]:
+            button=QPushButton(label);button.setProperty('role','choice');button.setCheckable(True);button.setAutoExclusive(True);button.setAccessibleName(label.replace('\n',' '));button.clicked.connect(lambda checked=False,m=method:self.answer(m));line.addWidget(button);self.buttons[method]=button
         box.addLayout(line);self.reason=QComboBox();self.reason.setAccessibleName('Reason clipping method cannot be seen')
         for text,value in [('Choose reason…',''),('Hands / rope hidden','hidden'),('Camera misses the method','camera'),('Visible but unclear','unclear')]:self.reason.addItem(text,value)
         self.reason.currentIndexChanged.connect(self.reason_changed);box.addWidget(self.reason)
-        line=QHBoxLayout();jump=QPushButton('Jump to this clip');jump.clicked.connect(self.jump);line.addWidget(jump)
-        gap=QPushButton('Clip not recorded…');gap.clicked.connect(self.gap);line.addWidget(gap);box.addLayout(line)
+        line=QHBoxLayout();jump=QPushButton('Jump to clip');jump.setProperty('role','quiet');jump.clicked.connect(self.jump);line.addWidget(jump)
+        gap=QPushButton('Clip not recorded…');gap.setProperty('role','quiet');gap.clicked.connect(self.gap);line.addWidget(gap);box.addLayout(line)
         self.gaps=QComboBox();self.gaps.setAccessibleName('Clip visibility gaps');box.addWidget(self.gaps)
         line=QHBoxLayout();jump_gap=QPushButton('Jump to gap note');jump_gap.clicked.connect(self.jump_gap);line.addWidget(jump_gap)
         remove=QPushButton('Remove gap note');remove.clicked.connect(self.remove_gap);line.addWidget(remove);self.gap_actions=QWidget();self.gap_actions.setLayout(line);box.addWidget(self.gap_actions)
@@ -308,25 +308,20 @@ class ClipReview(QWidget):
         self.fingerprint=fingerprint
         events=[e for e in (document or {}).get('events',[]) if e['kind']=='clip'];pending=identity.unanswered(document) if document else []
         events=sorted(events,key=lambda e:(identity.clip_answered(e),e['start']['seconds']))
-        count=len(pending)
-        self.toggle.setText(f'Clipping review · {count} answer(s) needed' if count else 'Clipping review · methods answered' if events else 'Clipping review / visibility gaps ▸')
-        if count>getattr(self,'pending_count',0):self.toggle.setChecked(True)
-        if not count and getattr(self,'pending_count',0):self.toggle.setChecked(False)
-        self.pending_count=count
         old=self.event_id;self.queue.blockSignals(True);self.queue.clear()
-        for e in events:self.queue.addItem(f"QD {e['target'] or '?'} · {e['hand']} · "+({'direct':'Direct','mouth':'Two-stage','unknown':'Cannot tell'}.get(e.get('clip_method'),'Answer needed') if identity.clip_answered(e) else 'Answer needed'),e['id'])
+        for e in events:self.queue.addItem(f"Quickdraw {e['target'] or '?'} · {e['hand']} · "+({'direct':'Direct','mouth':'Two-stage','unknown':'Cannot tell'}.get(e.get('clip_method'),'Answer needed') if identity.clip_answered(e) else 'Answer needed'),e['id'])
         self.queue.setCurrentIndex(max(0,self.queue.findData(old)));self.event_id=self.queue.currentData();self.queue.blockSignals(False)
-        e=self.current();self.title.setText(f"QD {e['target'] or '?'} · {e['hand'].capitalize()} hand · how was it clipped?" if e else 'Complete a clip timer to choose its method.')
+        e=self.current();self.queue.setAccessibleDescription(f"Quickdraw {e['target'] or '?'} · {e['hand'].capitalize()} hand · how was it clipped?" if e else 'Complete a clip timer to choose its method.')
         self.queue.setVisible(bool(e))
         for button in self.buttons.values():button.setAutoExclusive(False)
-        for method,button in self.buttons.items():button.setEnabled(bool(e));button.setChecked(bool(e and e.get('clip_method')==method))
+        for method,button in self.buttons.items():button.setEnabled(bool(e));button.setChecked(bool(e and e.get('clip_method')==method));button.setText(('✓ ' if button.isChecked() else '○ ')+{'direct':'Direct','mouth':'Two-stage · rope in mouth','unknown':'Cannot tell'}[method])
         for button in self.buttons.values():button.setAutoExclusive(True)
         self.reason.blockSignals(True);self.reason.setCurrentIndex(max(0,self.reason.findData(e.get('clip_reason','') if e else '')));self.reason.blockSignals(False);self.reason.setVisible(bool(e and e.get('clip_method')=='unknown'))
         self.hint.setText(f'{len(pending)} clip method(s) need an answer. Timing is saved; answer before finishing review.' if pending else 'Clip methods answered. Cannot tell stays unknown; gap notes never create a duration.')
         self.gaps.clear()
         for gap in (document or {}).get('clip_gaps',[]):self.gaps.addItem(f"QD {gap['target'] or '?'} · {gap['visibility']} · {gap['notes']}",gap['id'])
         self.gaps.setVisible(self.gaps.count()>0);self.gap_actions.setVisible(self.gaps.count()>0)
-        self.setVisible(bool(document))
+        self.setEnabled(bool(document))
     def select(self):self.event_id=self.queue.currentData();self.refresh(self.w.document())
     def answer(self,method):
         if not self.current():return

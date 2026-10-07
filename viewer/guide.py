@@ -98,7 +98,12 @@ def steps(w):
     """Five steps, shown once a video is loaded so every highlight points at real data."""
     measure=lambda:w.show_view(w.measure_page)
     def panel(widget):
-        def before():measure();w.measurement_scroll.ensureWidgetVisible(widget, 0, 40)
+        def before():
+            measure()
+            page=widget if w.review_tabs.indexOf(widget)>=0 else None
+            if page:w.review_tabs.setCurrentWidget(page)
+            if widget is w.footwork_panel:w.footwork_panel.toggle.setChecked(True)
+            if page:w.measurement_scroll.ensureWidgetVisible(widget,0,40)
         return before
     def video_rect():
         a, b = rect_of(w, w.image), rect_of(w, w.transport)
@@ -108,6 +113,6 @@ def steps(w):
         dict(title='2 · Start and end', text='Name the athlete. Pause on the first grip and press S, then on the fall or the top press E. The climb time appears below.', target=lambda:rect_of(w, w.boundary_box), before=panel(w.boundary_box)),
         dict(title='3 · Time each hand', text='Clip, rest and chalk timers for the left and right hand. Press once to start at the current frame, again to stop. A running timer fills its tile and shows its time.', target=lambda:rect_of(w, w.hands_box), before=panel(w.hands_box)),
         dict(title='4 · Named points', text='Mark when the athlete reaches a shared point, such as a rest or the roof (P). Use the same names for every athlete to compare their splits.', target=lambda:rect_of(w, w.point_box), before=panel(w.point_box)),
-        dict(title='5 · Review footwork', text='Expand Footwork review for left/right slips, deliberate releases and both-feet-off intervals. Review coverage explicitly and mark hidden feet as obscured. Confirm intent; intentional dynamic moves stay separate from unplanned releases.', target=lambda:rect_of(w,w.footwork_panel), before=panel(w.footwork_panel)),
+        dict(title='5 · Review footwork', text='Open Feet review for left/right slips, deliberate releases and both-feet-off intervals. Review coverage explicitly and mark hidden feet as obscured. Confirm intent; intentional dynamic moves stay separate from unplanned releases.', target=lambda:rect_of(w,w.footwork_panel), before=panel(w.footwork_panel)),
         dict(title='6 · Coach and export', text='Record a session goal, athlete reflection and next-session action in Coaching goal. Export a coaching review with an evidence index, printable PDF and optional local video sections. Compare describes timings; it does not rank ability. Replay this tour from Help.', target=lambda:tab_rect(w, w.main_tabs, 1)),
     ]

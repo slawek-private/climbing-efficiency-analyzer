@@ -80,7 +80,7 @@ def row_text(row,spec):
 
 def svg_chart(spec,dark=False):
     """Visible numbers and labels; coverage has redundant hatch patterns."""
-    ink='#f3f4f5' if dark else '#20252b';accent='#8cbcff' if dark else '#245fc4';neutral='#8b939d'
+    ink='#f3f4f5' if dark else '#20252b';accent='#93bcff' if dark else '#245fc4';neutral='#8b939d'
     foot=spec.get('kind')=='footwork';step=100 if foot else 34 if spec.get('compact') else 54;height=18+max(1,len(spec['rows']))*step
     maximum=max([r.get('value') or 0 for r in spec['rows']]+[1])
     out=f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 {height}" role="img" aria-label="{escape(spec["title"]+'. '+'. '.join(row_text(r,spec) for r in spec['rows']),quote=True)}"><title>{escape(spec["title"]+". "+spec["note"])}</title><defs><pattern id="hidden" width="6" height="6" patternUnits="userSpaceOnUse"><path d="M0 6L6 0" stroke="{ink}" stroke-width="1"/></pattern><pattern id="unchecked" width="6" height="6" patternUnits="userSpaceOnUse"><circle cx="3" cy="3" r="1" fill="{ink}"/></pattern></defs>'
@@ -126,7 +126,7 @@ def read_snapshot(source):
 
 OVERVIEW_CSS='''
 svg text{fill:var(--ink)}.footwork-timeline .event-confirmed{fill:var(--ink);stroke:var(--ink)}.footwork-timeline .event-candidate{fill:none;stroke:var(--ink)}.footwork-timeline defs path{stroke:var(--ink)}
-.chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}.report-overview .scope{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin:12px 0}.report-overview label{font-size:13px}.report-overview select{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:6px;max-width:280px}.report-overview .attempt-choices{display:flex;gap:12px;flex-wrap:wrap}.report-overview .dashboard-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:24px}.report-overview article{min-width:0;border:1px solid var(--line);border-radius:6px;padding:16px}.report-overview h3{font-size:16px;margin:0 0 6px}.report-overview svg{display:block;width:100%;height:auto;font-family:system-ui,sans-serif}.report-overview .chart-note{font-size:12px;color:var(--muted);margin:0 0 12px}.report-overview svg .athlete-label{fill:var(--ink)}.report-overview svg text{fill:var(--ink)}.report-overview svg .value-bar{fill:#8b939d}.report-overview svg .is-ref .value-bar{fill:var(--accent)}[hidden]{display:none!important}.report-overview th{position:static}.report-overview td{font-variant-numeric:tabular-nums}.report-overview .empty{padding:20px 0}
+.chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}.report-overview .scope{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin:12px 0}.report-overview label{font-size:13px}.report-overview select{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:7px 9px;min-height:36px;max-width:280px}.report-overview .attempt-choices{display:flex;gap:12px;flex-wrap:wrap}.report-overview .dashboard-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:24px}.report-overview article{min-width:0;border:1px solid var(--soft);border-radius:8px;padding:16px}.report-overview h3{font-size:16px;margin:0 0 6px}.report-overview svg{display:block;width:100%;height:auto;font-family:system-ui,sans-serif}.report-overview .chart-note{font-size:12px;color:var(--muted);margin:0 0 12px}.report-overview svg .athlete-label{fill:var(--ink)}.report-overview svg text{fill:var(--ink)}.report-overview svg .value-bar{fill:#8b939d}.report-overview svg .is-ref .value-bar{fill:var(--accent)}[hidden]{display:none!important}.report-overview th{position:static}.report-overview td{font-variant-numeric:tabular-nums}.report-overview .empty{padding:20px 0}
 @media(max-width:760px){.report-overview .dashboard-grid,.chart-grid{grid-template-columns:1fr}}
 @media print{.report-overview .scope,.report-overview .attempt-choices{display:none}.report-overview article{break-inside:avoid}.report-overview .dashboard-grid{gap:12px}.report-overview{break-before:auto}.report-overview svg{max-height:320px}.report-overview .scroll{overflow:visible}}
 '''
@@ -218,7 +218,7 @@ def legacy_records(overview,points,activities):
 
 def footwork_timeline(document,dark=False):
     """Coverage-aware timeline in climb seconds, retaining candidates as outlines."""
-    r=records([document])[0];duration=r['analysis'];ink='#f3f4f5' if dark else '#20252b';accent='#8cbcff' if dark else '#245fc4'
+    r=records([document])[0];duration=r['analysis'];ink='#f3f4f5' if dark else '#20252b';accent='#93bcff' if dark else '#245fc4'
     if not duration:return '<p>Mark climb boundaries to view the footwork timeline.</p>'
     out=f'<svg xmlns="http://www.w3.org/2000/svg" class="footwork-timeline" viewBox="0 0 900 130" role="img" aria-label="Footwork coverage and observations"><title>Footwork coverage and observations in seconds from climb start. Filled triangle: confirmed slip. Outline: candidate. Circle: intentional release. Feet-off intervals: labelled.</title><defs><pattern id="timelineHidden" width="8" height="8" patternUnits="userSpaceOnUse"><path d="M0 8L8 0" stroke="{ink}"/></pattern></defs><rect x="10" y="45" width="880" height="20" fill="#8b939d" opacity=".25"/>'
     for c in r['coverage']:

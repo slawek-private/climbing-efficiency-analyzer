@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from PySide6.QtCore import Qt, QThread, Signal, QTimer, QElapsedTimer,QEvent
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QComboBox, QSlider, QFrame
+from .controls import Button as QPushButton
 from .app import ImageView
 from .labels import ROOT
 from .video import index_video, VideoReader
@@ -52,11 +53,8 @@ class IndexAll(QThread):
             except Exception as error:self.failed.emit(path, str(error))
 
 
-OVERLAY = 'background: rgba(6, 12, 22, 170); color: white; padding: 2px 7px; border-radius: 5px; font-size: 12px;'
-
-
 class Tile(QWidget):
-    """One video filling its cell; athlete and time are overlaid instead of taking rows."""
+    """Identity and decode status stay outside the aspect-correct video."""
     def __init__(self, document, reader, anchor):
         super().__init__();self.document = document;self.reader = reader;self.anchor = anchor;self.aspect = None
         self.pool = ThreadPoolExecutor(max_workers=1);self.future = None;self.wanted = 0;self.shown = None;self.pending = None
@@ -65,13 +63,13 @@ class Tile(QWidget):
         self.title = QLabel(f"{document['climber']} · {document['attempt']}"+(f' · {result}' if result else ''), self);self.status = QLabel(self)
         if document.get('assignment'):
             session=document['assignment']['session'];self.title.setText(self.title.text()+' · '+session['name']+' · '+session['date'])
-        for label in (self.title, self.status):label.setStyleSheet(OVERLAY);label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        self.title.setStyleSheet(OVERLAY+'font-weight: 700;')
+        for label in (self.title,self.status):label.setObjectName('muted')
+        self.full_title=self.title.text();self.title.setToolTip(self.full_title);self.title.setAccessibleName(self.full_title)
         from .scrubber import PrecisionScrubber
         self.timeline=PrecisionScrubber(read_only=True);self.timeline.setParent(self);self.timeline.time_origin=anchor;self.timeline.sync(reader.times[-1],reader.times[0],document)
     def resizeEvent(self, event):
-        height=max(0,self.height()-self.timeline.height());self.view.setGeometry(0,0,self.width(),height);self.timeline.setGeometry(0,height,self.width(),self.timeline.height());self.title.adjustSize();self.title.move(6, 6);self.place_status()
-    def place_status(self):self.status.adjustSize();self.status.move(6, self.height()-self.timeline.height()-self.status.height()-6)
+        height=max(0,self.height()-self.timeline.height()-48);self.view.setGeometry(0,26,self.width(),height);self.timeline.setGeometry(0,height+48,self.width(),self.timeline.height());self.title.setGeometry(6,0,max(0,self.width()-12),24);self.title.setText(self.title.fontMetrics().elidedText(self.full_title,Qt.TextElideMode.ElideRight,max(0,self.width()-12)));self.place_status()
+    def place_status(self):self.status.setGeometry(6,self.height()-self.timeline.height()-22,max(0,self.width()-12),22);self.status.setToolTip(self.status.text())
     def seek(self, t):
         seconds = self.anchor+t;self.wanted = frame_at(self.reader.times, seconds)
         note = ' · not started' if seconds < 0 else ' · ended' if seconds > self.reader.times[-1] else ''
@@ -110,7 +108,7 @@ class TileArea(QWidget):
     def relayout(self):
         if not self.tiles:return
         known = sorted(t.aspect for t in self.tiles if t.aspect);aspect = known[len(known)//2] if known else 16/9
-        footer=max(t.timeline.height() for t in self.tiles);columns = best_columns(len(self.tiles), self.width(), self.height(), aspect, self.GAP,footer);rows = math.ceil(len(self.tiles)/columns)
+        footer=max(t.timeline.height()+48 for t in self.tiles);columns = best_columns(len(self.tiles), self.width(), self.height(), aspect, self.GAP,footer);rows = math.ceil(len(self.tiles)/columns)
         cell_w = (self.width()-self.GAP*(columns-1))/columns;cell_h = (self.height()-self.GAP*(rows-1))/rows
         w = min(cell_w, max(1,cell_h-footer)*aspect);h = w/aspect+footer;left = (self.width()-(w*columns+self.GAP*(columns-1)))/2;top = (self.height()-(h*rows+self.GAP*(rows-1)))/2
         for i, tile in enumerate(self.tiles):
@@ -124,16 +122,15 @@ class SyncView(QWidget):
         self.t = 0.;self.lo = 0.;self.hi = 1.;self.playing = False;self.clock = QElapsedTimer();self.play_from = 0.
         self.timer = QTimer(self);self.timer.setInterval(15);self.timer.timeout.connect(self.tick)
         layout = QVBoxLayout(self);layout.setContentsMargins(4, 4, 4, 4);layout.setSpacing(4)
-        top = QHBoxLayout();self.athletes_button=QPushButton('Choose athletes…');self.athletes_button.clicked.connect(window.compare_scope.choose_subjects);top.addWidget(self.athletes_button);top.addWidget(QLabel('Align at'));self.anchor = QComboBox();self.anchor.setMinimumWidth(170);self.anchor.currentIndexChanged.connect(self.alignment_changed);top.addWidget(self.anchor)
-        self.anchor.setToolTip('The moment that becomes 0 s in every video: climb start, or the first arrival at a shared named point.')
+        top = QHBoxLayout()
         reload = QPushButton('Reload videos');reload.setProperty('role', 'quiet');reload.clicked.connect(lambda:self.load(retry=True));top.addWidget(reload)
         self.note = QLabel();self.note.setWordWrap(True);self.note.setObjectName('muted');top.addWidget(self.note, 1)
-        self.full = QPushButton('Full screen');self.full.setToolTip('Use the whole screen for the videos (Esc or click again to leave).');self.full.clicked.connect(self.toggle_full_screen);top.addWidget(self.full);layout.addLayout(top)
+        self.full = QPushButton('Full screen');self.full.setProperty('role','quiet');self.full.setToolTip('Use the whole screen for the videos (Esc or click again to leave).');self.full.clicked.connect(self.toggle_full_screen);top.addWidget(self.full);layout.addLayout(top)
         self.area = TileArea();layout.addWidget(self.area, 1)
         controls = QHBoxLayout();controls.setSpacing(4)
         self.play_button = QPushButton('Play · Space');self.play_button.setProperty('role', 'primary');self.play_button.clicked.connect(self.toggle_play);controls.addWidget(self.play_button)
         for text, seconds, frames in (('← 1 s', -1., 0), ('← frame', 0, -1), ('frame →', 0, 1), ('1 s →', 1., 0)):
-            b = QPushButton(text);b.clicked.connect(lambda checked=False, s=seconds, f=frames:self.step(s) if s else self.step_frames(f));controls.addWidget(b)
+            b = QPushButton(text);b.setProperty('role','quiet');b.clicked.connect(lambda checked=False, s=seconds, f=frames:self.step(s) if s else self.step_frames(f));controls.addWidget(b)
         self.speed = QComboBox();self.speed.addItems([f'{s:g}×' for s in SPEEDS]);self.speed.setCurrentIndex(2);self.speed.currentIndexChanged.connect(self.restart_clock);controls.addWidget(self.speed)
         controls.addWidget(QLabel('Shared timeline'));self.slider = QSlider(Qt.Orientation.Horizontal);self.slider.setAccessibleName('Shared timeline for all comparison videos');self.slider.setToolTip('Drag to move every selected video together. Individual label timelines are read-only.');self.slider.valueChanged.connect(lambda ms:self.seek(ms/1000));self.slider.sliderPressed.connect(self.pause);controls.addWidget(self.slider, 1)
         self.position = QLabel();self.position.setMinimumWidth(150);controls.addWidget(self.position);layout.addLayout(controls)
@@ -147,12 +144,6 @@ class SyncView(QWidget):
         if self.window.isFullScreen():self.window.showNormal()
         else:self.window.showFullScreen()
         self.full.setText('Exit full screen' if self.window.isFullScreen() else 'Full screen')
-    def anchors(self):
-        names = sorted({p['name'] for d in self.window.workspace.documents() for p in d.get('checkpoints', [])}, key=str.casefold)
-        return [('Climb start', 'start')]+[(f'Point {n} · first arrival', n) for n in names]
-    def alignment_changed(self):
-        name=self.anchor.currentData();index=self.window.compare_scope.point.findText('Climb start' if name=='start' else name)
-        if index>=0:self.window.compare_scope.point.setCurrentIndex(index)
     def selected_entries(self):
         records=[(p,s) for p,s in self.window.workspace.states.items()]+[(e['path'],e['state']) for e in self.window.workspace.attempts]
         from .compare_scope import identity
@@ -161,10 +152,6 @@ class SyncView(QWidget):
     def activate(self):
         self.window.remember_current()
         self.window.compare_scope.set_documents(self.window.workspace.documents())
-        chosen=self.window.compare_scope.point.currentText();current='start' if chosen=='Climb start' else chosen
-        self.anchor.blockSignals(True);self.anchor.clear()
-        for title, value in self.anchors():self.anchor.addItem(title, value)
-        self.anchor.setCurrentIndex(max(0, self.anchor.findData(current)));self.anchor.blockSignals(False)
         self.load()
     def load(self,retry=False):
         if retry:self.index_errors.clear()
@@ -182,7 +169,7 @@ class SyncView(QWidget):
         self.tiles = [];self.area.tiles = []
     def rebuild(self):
         if self.worker and self.worker.isRunning():return
-        saved_time=self.t;self.clear();anchor = self.anchor.currentData() or 'start';skipped = []
+        saved_time=self.t;self.clear();point=self.window.compare_scope.point.currentText();anchor='start' if point=='Climb start' or not point else point;skipped = []
         from .preview_cache import open_preview
         for path,state in self.selected_entries():
             index = self.indexes.get(path)
@@ -195,7 +182,6 @@ class SyncView(QWidget):
         self.area.set_tiles(self.tiles)
         self.lo = min((-t.anchor for t in self.tiles), default=0.);self.hi = max((t.reader.times[-1]-t.anchor for t in self.tiles), default=1.)
         for tile in self.tiles:tile.timeline.view_range=(self.lo+tile.anchor,self.hi+tile.anchor)
-        self.athletes_button.setText(f'Choose athletes & attempts · {len(self.window.compare_scope.chosen())}')
         self.slider.blockSignals(True);self.slider.setRange(int(self.lo*1000), int(self.hi*1000));self.slider.blockSignals(False)
         what = 'climb start' if anchor == 'start' else 'point '+anchor
         self.note.setText(f'{len(self.tiles)} video(s) aligned at {what}'+(f" · not marked: {', '.join(skipped)}" if skipped else '') if self.tiles else 'Choose athletes and mark their climb start (or the chosen point) to compare.')
