@@ -15,7 +15,7 @@ class PrecisionScrubber(QWidget):
         self.read_only=read_only;self.view_range=None;self.time_origin=0.;self.event_hits=[];self.playhead_rect=QRectF();self.duration=1.;self.position=0.;self.document=None;self.dark=False
         self.span=0.;self.center=0.;self.dragging=False;self.panning=False;self.foot_hits=[]
         self.setMouseTracking(True)
-        self.setAccessibleName('Read-only event timeline' if read_only else 'Video event timeline');self.setToolTip('Read-only labels · hover for activity, hand and time · use the shared slider to move all videos' if read_only else 'Pinch to zoom · two-finger scroll to pan · double-tap for full video · wheel to zoom · hover labels for details')
+        self.setAccessibleName('Read-only event timeline' if read_only else 'Video event timeline');self.setToolTip('Hands lane: clip blue, rest green hatched, chalk purple hatched. Feet lane: reviewed green, obscured grey hatched, slips and releases outlined.\n'+('Read-only labels · hover for activity, hand and time · use the shared slider to move all videos' if read_only else 'Pinch to zoom · two-finger scroll to pan · double-tap for full video · wheel to zoom · hover labels for details'))
     def bounds(self):
         if self.view_range is not None:return self.view_range
         span=min(self.duration,self.span) if self.span else self.duration
@@ -61,7 +61,7 @@ class PrecisionScrubber(QWidget):
             t+=step
         p.fillRect(12,46,max(1,self.width()-24),25,QColor('#383e45' if self.dark else '#e5e7eb'))
         d=self.document;self.foot_hits=[];self.event_hits=[];self.playhead_rect=QRectF()
-        p.setPen(QColor(text));p.drawText(12,86,'Hands · clip / rest / chalk')
+        p.setPen(QColor(text));p.drawText(12,86,'Hands')
         if d:
             for e in d['events']:
                 x=max(a,e['start']['seconds']);end=min(b,e['end']['seconds'])
@@ -74,7 +74,7 @@ class PrecisionScrubber(QWidget):
                 self.event_hits.append((rect.adjusted(0,-2,0,2),e))
             track=d.get('footwork')
             if track:
-                p.setPen(QColor(text));p.drawText(12,113,'Feet · reviewed / obscured / off / slip')
+                p.setPen(QColor(text));p.drawText(12,113,'Feet')
                 p.fillRect(12,89,max(1,self.width()-24),12,QColor('#383e45' if self.dark else '#e5e7eb'))
                 for c in track['coverage']:
                     x,end=max(a,c['start']['seconds']),min(b,c['end']['seconds'])

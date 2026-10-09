@@ -108,6 +108,7 @@ class Window(LegacyWindow):
         from PySide6.QtWidgets import QGraphicsOpacityEffect
         from PySide6.QtCore import QPropertyAnimation
         self.save_effect=QGraphicsOpacityEffect(self.save_state);self.save_state.setGraphicsEffect(self.save_effect);self.save_fade=QTimer(self);self.save_fade.setSingleShot(True);self.save_fade.setInterval(3000)
+        self.pulse_timer=QTimer(self);self.pulse_timer.setInterval(500);self.pulse_timer.timeout.connect(self.pulse)
         self.save_animation=QPropertyAnimation(self.save_effect,b'opacity',self);self.save_animation.setDuration(400);self.save_animation.setEndValue(0.0);self.save_fade.timeout.connect(self.save_animation.start)
         points=self.workspace.shared_points();self.point_name.setText(self.settings.value('last_point','') or (points[-1] if points else 'A'))
         self.refresh_live();self.refresh_collection();self.refresh_preview_status();self.update_project_label()
@@ -122,6 +123,10 @@ class Window(LegacyWindow):
         from .home import NewSessionWizard
         wizard=NewSessionWizard(self,kind,allow_project=False)
         if wizard.exec()==QDialog.DialogCode.Accepted:self.show_workspace();self.open_video()
+    def pulse(self):
+        design.PULSE[0]=not design.PULSE[0]
+        for control in list(self.hand_timer_buttons.values())+[self.focus_buttons.layout().itemAt(i).widget() for i in range(self.focus_buttons.layout().count())]:
+            if control and control.property('role')=='stop':control.update()
     def cancel_opening(self):
         if self.worker and self.worker.isRunning():self.worker.requestInterruption()
     def show_poster(self,image):
@@ -429,9 +434,20 @@ class Window(LegacyWindow):
             foot_pending=d.get('footwork',{}).get('pending') if d else None
             self.active_timers.setVisible(loaded and not self.analysis_panel.isVisible() and bool(d and (d['open_events'] or foot_pending)))
             self.active_timers.setText((f"Both feet off running: {max(0,now-foot_pending['start']['seconds']):.1f} s · " if foot_pending else '')+' · '.join(f"{e['hand'].capitalize()} {e['kind']} running: {max(0,now-e['start']['seconds']):.1f} s" for e in (d['open_events'] if d else [])))
+            running=tuple((e['kind'],e['hand']) for e in (d['open_events'] if d else []))
+            if running!=getattr(self,'focus_running',()):
+                self.focus_running=running;layout=self.focus_buttons.layout()
+                while layout.count():
+                    item=layout.takeAt(0)
+                    if item.widget():item.widget().deleteLater()
+                for kind,hand in running:
+                    b=design.KeyButton(f'Stop {hand} {kind}',self.hand_timer_buttons[kind,hand].key,lambda checked=False,k=kind,h=hand:self.toggle_hand_timer(k,h),'stop');b.setProperty('kind',kind);b.setMinimumWidth(150);layout.addWidget(b)
+            self.focus_buttons.setVisible(self.active_timers.isVisible())
+            if running and not self.pulse_timer.isActive():self.pulse_timer.start()
+            elif not running:self.pulse_timer.stop()
             if opening and self.video_path:self.loading_title.setText(self.video_path.name);self.loading_stage.setText('Reading the file once · cached afterwards');self.fit_poster()
             else:self.poster.clear();self.poster_image=None
-            if loaded:self.position.setText(f'<span style="font-size:14pt;font-weight:600">{timecode(now)}</span>&nbsp;&nbsp;<span style="font-size:11px;color:{"#b2b8bf" if self.theme=="dark" else "#59616b"}">frame {self.frame_number}</span>')
+            if loaded:self.position.setText(f'<span style="font-size:22px;font-weight:600">{timecode(now)}</span>&nbsp;&nbsp;<span style="font-size:11px;color:{"#b2b8bf" if self.theme=="dark" else "#59616b"}">frame {self.frame_number}</span>')
             self.start_value.setText('Start '+timecode(d['start']['seconds']) if d and d['start'] else 'Climb start not marked');self.start_button.setText('Edit' if d and d['start'] else 'Mark start');self.start_clear.setVisible(bool(d and d['start']))
             self.end_value.setText('End '+timecode(d['end']['seconds'])+' · '+{'failed':'Fell','completed':'Topped'}.get(d['outcome'],d['outcome']) if d and d['end'] else 'Climb end not marked');self.end_button.setText('Edit' if d and d['end'] else 'Mark end')
             self.end_edit.setVisible(bool(d and d['end']));self.end_clear.setVisible(bool(d and d['end']))
@@ -447,7 +463,7 @@ class Window(LegacyWindow):
             self.save_banner.setVisible(bool(failure));self.save_detail.setText(failure or '')
         self.start_status.setText('Start: '+(f"{d['start']['seconds']:.3f} s in video" if d and d['start'] else 'not marked'))
         self.end_status.setText('End: '+(f"{d['end']['seconds']:.3f} s · "+{'failed':'Fell / failed','completed':'Topped'}.get(d['outcome'],d['outcome']) if d and d['end'] else 'not marked'))
-        self.duration_status.setText('Climb time  '+(f"{d['end']['seconds']-d['start']['seconds']:.3f} s" if d and d['start'] and d['end'] else '—  mark start and end'))
+        self.duration_status.setText(f"{d['end']['seconds']-d['start']['seconds']:.3f} s" if d and d['start'] and d['end'] else '—')
         for kind in ('rest','clip'):
             pending=next((e for e in d['open_events'] if e['kind']==kind),None) if d else None
             current=next((e for e in d['events'] if e['kind']==kind and e['start']['seconds']<=now<e['end']['seconds']),None) if d else None
@@ -461,8 +477,8 @@ class Window(LegacyWindow):
             if control.property('role')!=role:control.setProperty('role',role);control.setStyleSheet('')
             visible=pending if pending and pending['start']['seconds']<=now else current
             name=kind.capitalize();text='Start '+name.lower()
-            if pending and visible:text=f'■ Stop {name.lower()}\n{now-visible["start"]["seconds"]:.1f} s'
-            elif pending:text=f'■ {name} · seek forward'
+            if pending and visible:text=f'Stop {name.lower()}\n{now-visible["start"]["seconds"]:.1f} s'
+            elif pending:text=f'{name} · seek forward'
             elif visible:text=f'{name} · {visible["end"]["seconds"]-visible["start"]["seconds"]:.1f} s\nEdit interval'
             control.setText(text);control.setAccessibleName(hand.capitalize()+' hand · '+('Stop ' if pending else 'Edit ' if visible else 'Start ')+kind);control.setEnabled(bool(d))
             if pending and kind=='clip':control.setToolTip(f"Quickdraw {pending['target']} · timing is saved when stopped; choose its method afterwards")
