@@ -102,6 +102,12 @@ QMenuBar { background: $background; color: $ink; padding: 2px 6px; }
 QMenuBar::item { padding: 4px 8px; border-radius: 4px; }
 QMenuBar::item:selected { background: $hover; }
 QScrollArea { border: none; background: transparent; }
+QListWidget#sideTabs { background: transparent; outline: 0; }
+QListWidget#sideTabs::item { padding: 7px 10px; border-radius: 6px; color: $muted; }
+QListWidget#sideTabs::item:selected { background: $selected; color: $ink; font-weight: 600; }
+QListWidget#sideTabs::item:hover { background: $hover; }
+QWidget#dashboardCard[primary="true"] { border-left: 3px solid $accent; }
+QComboBox[chip="true"] { border-radius: 14px; padding-left: 10px; }
 QScrollBar:vertical { background: $background; width: 10px; margin: 0; }
 QScrollBar::handle:vertical { background: $line; border-radius: 4px; min-height: 30px; }
 QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical { height: 0; }

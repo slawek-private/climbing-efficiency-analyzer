@@ -862,12 +862,13 @@ class Window(LegacyWindow):
         for row,r in enumerate(data):
             values=summary_cells(r,checkpoint);arrival=r['arrivals'].get(checkpoint);ref=reference['arrivals'].get(checkpoint) if reference else None
             if arrival is not None and ref is not None:values[3]+=f' · {arrival-ref:+.2f} s vs ref'
+            parts=r['name'].split(' · ');values[0]=f'{parts[0]} · attempt {parts[1]}' if len(parts)>1 else values[0]
             if row==0:values[0]='Ref · '+values[0]
             keys=[r['name'].casefold(),r['result'],r['climb'],arrival,r['recovery'],r['checked']]
             for col,(value,key) in enumerate(zip(values,keys)):
                 item=Sortable(value);item.setData(Qt.ItemDataRole.UserRole,key)
                 if col==0:item.setData(Qt.ItemDataRole.UserRole+1,row)
-                item.setToolTip(['Double-click to open this exact attempt','Marked result','Marked climb start to end; falls and tops are not ranked', 'Unique arrival inside climb boundaries. Missing or repeated arrivals are unknown',r['recovery_state']+' · rest and chalking overlaps counted once; unknown is not zero',r['foot_state']+' · only visible, checked footage contributes to footwork totals'][col]);table.setItem(row,col,item)
+                item.setToolTip([r['name']+' · double-click to open this exact attempt','Marked result','Marked climb start to end; falls and tops are not ranked', 'Unique arrival inside climb boundaries. Missing or repeated arrivals are unknown',r['recovery_state']+' · rest and chalking overlaps counted once; unknown is not zero',r['foot_state']+' · only visible, checked footage contributes to footwork totals'][col]);table.setItem(row,col,item)
         table.setSortingEnabled(True);table.resizeColumnsToContents();table.horizontalHeader().setStretchLastSection(True);table.horizontalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignLeft|Qt.AlignmentFlag.AlignVCenter)
         height=table.horizontalHeader().height()+sum(table.rowHeight(r) for r in range(min(8,table.rowCount())))+6
         table.setFixedHeight(max(60,height))

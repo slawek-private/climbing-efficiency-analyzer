@@ -6,6 +6,7 @@ from pathlib import Path
 from PySide6.QtCore import Qt, QThread, Signal, QTimer, QElapsedTimer,QEvent
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QComboBox, QSlider, QFrame
 from .controls import Button as QPushButton
+from .design import icon_button,KeyButton
 from .app import ImageView
 from .labels import ROOT
 from .video import index_video, VideoReader
@@ -68,8 +69,9 @@ class Tile(QWidget):
         from .scrubber import PrecisionScrubber
         self.timeline=PrecisionScrubber(read_only=True);self.timeline.setParent(self);self.timeline.time_origin=anchor;self.timeline.sync(reader.times[-1],reader.times[0],document)
     def resizeEvent(self, event):
-        height=max(0,self.height()-self.timeline.height()-48);self.view.setGeometry(0,26,self.width(),height);self.timeline.setGeometry(0,height+48,self.width(),self.timeline.height());self.title.setGeometry(6,0,max(0,self.width()-12),24);self.title.setText(self.title.fontMetrics().elidedText(self.full_title,Qt.TextElideMode.ElideRight,max(0,self.width()-12)));self.place_status()
-    def place_status(self):self.status.setGeometry(6,self.height()-self.timeline.height()-22,max(0,self.width()-12),22);self.status.setToolTip(self.status.text())
+        height=max(0,self.height()-self.timeline.height()-26);self.view.setGeometry(0,26,self.width(),height);self.timeline.setGeometry(0,height+26,self.width(),self.timeline.height());sw=min(self.status.sizeHint().width(),max(0,self.width()-60));half=max(0,self.width()-sw-18);self.title.setGeometry(6,0,half,24);self.title.setText(self.title.fontMetrics().elidedText(self.full_title,Qt.TextElideMode.ElideRight,half));self.place_status()
+    def place_status(self):
+        half=min(self.status.sizeHint().width(),max(0,self.width()-60));self.status.setGeometry(self.width()-half-6,0,half,24);self.status.setAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignVCenter);self.status.setToolTip(self.status.text())
     def seek(self, t):
         seconds = self.anchor+t;self.wanted = frame_at(self.reader.times, seconds)
         note = ' · not started' if seconds < 0 else ' · ended' if seconds > self.reader.times[-1] else ''
@@ -108,7 +110,7 @@ class TileArea(QWidget):
     def relayout(self):
         if not self.tiles:return
         known = sorted(t.aspect for t in self.tiles if t.aspect);aspect = known[len(known)//2] if known else 16/9
-        footer=max(t.timeline.height()+48 for t in self.tiles);columns = best_columns(len(self.tiles), self.width(), self.height(), aspect, self.GAP,footer);rows = math.ceil(len(self.tiles)/columns)
+        footer=max(t.timeline.height()+26 for t in self.tiles);columns = best_columns(len(self.tiles), self.width(), self.height(), aspect, self.GAP,footer);rows = math.ceil(len(self.tiles)/columns)
         cell_w = (self.width()-self.GAP*(columns-1))/columns;cell_h = (self.height()-self.GAP*(rows-1))/rows
         w = min(cell_w, max(1,cell_h-footer)*aspect);h = w/aspect+footer;left = (self.width()-(w*columns+self.GAP*(columns-1)))/2;top = (self.height()-(h*rows+self.GAP*(rows-1)))/2
         for i, tile in enumerate(self.tiles):
@@ -123,16 +125,18 @@ class SyncView(QWidget):
         self.timer = QTimer(self);self.timer.setInterval(15);self.timer.timeout.connect(self.tick)
         layout = QVBoxLayout(self);layout.setContentsMargins(4, 4, 4, 4);layout.setSpacing(4)
         top = QHBoxLayout()
-        reload = QPushButton('Reload videos');reload.setProperty('role', 'quiet');reload.clicked.connect(lambda:self.load(retry=True));top.addWidget(reload)
         self.note = QLabel();self.note.setWordWrap(True);self.note.setObjectName('muted');top.addWidget(self.note, 1)
-        self.full = QPushButton('Full screen');self.full.setProperty('role','quiet');self.full.setToolTip('Use the whole screen for the videos (Esc or click again to leave).');self.full.clicked.connect(self.toggle_full_screen);top.addWidget(self.full);layout.addLayout(top)
+        reload = QPushButton('Reload');reload.setProperty('role', 'quiet');reload.setToolTip('Open the selected videos again, including ones that failed.');reload.clicked.connect(lambda:self.load(retry=True));top.addWidget(reload)
+        self.full = icon_button('fit',self.toggle_full_screen,None,'Use the whole screen for the videos (Esc or click again to leave).','Full screen');top.addWidget(self.full);layout.addLayout(top)
         self.area = TileArea();layout.addWidget(self.area, 1)
         controls = QHBoxLayout();controls.setSpacing(4)
-        self.play_button = QPushButton('Play');self.play_button.setProperty('role', 'primary');self.play_button.clicked.connect(self.toggle_play);controls.addWidget(self.play_button)
-        for text, seconds, frames in (('← 1 s', -1., 0), ('← frame', 0, -1), ('frame →', 0, 1), ('1 s →', 1., 0)):
-            b = QPushButton(text);b.setProperty('role','quiet');b.clicked.connect(lambda checked=False, s=seconds, f=frames:self.step(s) if s else self.step_frames(f));controls.addWidget(b)
-        self.speed = QComboBox();self.speed.addItems([f'{s:g}×' for s in SPEEDS]);self.speed.setCurrentIndex(2);self.speed.currentIndexChanged.connect(self.restart_clock);controls.addWidget(self.speed)
-        controls.addWidget(QLabel('Shared timeline'));self.slider = QSlider(Qt.Orientation.Horizontal);self.slider.setAccessibleName('Shared timeline for all comparison videos');self.slider.setToolTip('Drag to move every selected video together. Individual label timelines are read-only.');self.slider.valueChanged.connect(lambda ms:self.seek(ms/1000));self.slider.sliderPressed.connect(self.pause);controls.addWidget(self.slider, 1)
+        self.play_button = KeyButton('Play','Space',self.toggle_play,'primary');self.play_button.setMinimumWidth(110);controls.addWidget(self.play_button)
+        for name, tip, frames in (('step-back','One frame back',-1),('step-forward','One frame forward',1)):
+            controls.addWidget(icon_button(name,lambda checked=False, f=frames:self.step_frames(f),'quiet',tip))
+        for text, seconds in (('−1 s',-1.),('+1 s',1.)):
+            b = QPushButton(text);b.setProperty('role','quiet');b.setToolTip('Move every video by one second');b.clicked.connect(lambda checked=False, s=seconds:self.step(s));controls.addWidget(b)
+        self.speed = QComboBox();self.speed.addItems([f'{s:g}×' for s in SPEEDS]);self.speed.setCurrentIndex(2);self.speed.setFixedWidth(68);self.speed.setToolTip('Playback speed');self.speed.currentIndexChanged.connect(self.restart_clock);controls.addWidget(self.speed)
+        self.slider = QSlider(Qt.Orientation.Horizontal);self.slider.setAccessibleName('Shared timeline for all comparison videos');self.slider.setToolTip('Drag to move every selected video together. Individual label timelines are read-only.');self.slider.valueChanged.connect(lambda ms:self.seek(ms/1000));self.slider.sliderPressed.connect(self.pause);controls.addWidget(self.slider, 1)
         self.position = QLabel();self.position.setMinimumWidth(150);controls.addWidget(self.position);layout.addLayout(controls)
     def eventFilter(self,obj,event):
         if event.type()==QEvent.Type.MouseButtonDblClick:

@@ -48,7 +48,8 @@ class Dashboard(QWidget):
         line=QHBoxLayout();line.addWidget(QLabel('Compare'));self.first=QComboBox();self.second=QComboBox();line.addWidget(self.first);line.addWidget(self.second);line.addStretch();layout.addLayout(line);self.first.hide();self.second.hide()
         for i in range(line.count()):
             if line.itemAt(i).widget():line.itemAt(i).widget().hide()
-        self.tabs=QTabWidget();layout.addWidget(self.tabs,1);self.hands=table();self.recovery=table();self.clips=table();self.point_table=table()
+        from .controls import SideTabs
+        self.tabs=SideTabs();layout.addWidget(self.tabs,1);self.hands=table();self.recovery=table();self.clips=table();self.point_table=table()
         self.tabs.addTab(self.hands,'Clipping hands');self.tabs.addTab(self.recovery,'Rest && chalk')
         from .charts import DetailPlots
         def paired(t,title):
@@ -56,7 +57,7 @@ class Dashboard(QWidget):
         self.clip_plots,clip_layout=paired(self.clips,'Same quickdraw');self.draw_selector=QComboBox();clip_layout.insertWidget(1,self.draw_selector);self.draw_selector.currentIndexChanged.connect(self.render_clip_plots)
         self.point_plots,_=paired(self.point_table,'Same point');self.checkpoint='Climb start'
         self.split_table=table();self.split_plots,_=paired(self.split_table,'Between clips')
-        page=QWidget();v=QVBoxLayout(page);self.chart=AllocationChart();self.allocation_table=table();v.addWidget(self.allocation_table,1);v.addWidget(self.chart);n=QLabel('Chalking contributes to total rest while remaining a separate band. Unclassified time can include movement, reading, hesitation or unmarked activity. Overlaps occupy a separate band so time is never counted twice.');n.setWordWrap(True);v.addWidget(n);self.tabs.addTab(page,'Time allocation')
+        page=QWidget();v=QVBoxLayout(page);self.chart=AllocationChart();self.allocation_table=table();self.allocation_table.setMaximumHeight(150);v.addWidget(self.allocation_table);v.addWidget(self.chart);n=QLabel('Chalking contributes to total rest while remaining a separate band. Unclassified time can include movement, reading, hesitation or unmarked activity. Overlaps occupy a separate band so time is never counted twice.');n.setWordWrap(True);v.addWidget(n);self.tabs.addTab(page,'Time allocation')
         self.foot_table=table();self.foot_plots,foot_layout=paired(self.foot_table,'Footwork');self.foot_timelines=QWidget();self.foot_column=QVBoxLayout(self.foot_timelines);foot_layout.insertWidget(2,self.foot_timelines)
         self.first.currentIndexChanged.connect(self.render);self.second.currentIndexChanged.connect(self.render)
     def update_documents(self,documents):

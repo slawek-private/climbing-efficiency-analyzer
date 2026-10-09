@@ -12,7 +12,7 @@ from .controls import Button as QPushButton
 from . import storage
 from . import identity
 
-COLUMNS = ['Video', 'Athlete', 'Resolution', 'FPS', 'Codec', 'Duration', 'File size', 'Smooth preview', 'Preview size', 'Notes','Workspace','Action','Session','Route version','Attempts']
+COLUMNS = ['Video', 'Athlete', 'Resolution', 'FPS', 'Codec', 'Duration', 'File size', 'Smooth preview', 'Preview size', 'Notes','Status','Action','Session','Route version','Attempts']
 HDR_TRANSFERS = {16, 18}  # SMPTE ST 2084 (PQ) and ARIB STD-B67 (HLG)
 
 
@@ -100,12 +100,12 @@ class LibraryTab(QWidget):
         from .controls import info_button
         head=QHBoxLayout();self.heading=QLabel();self.heading.setObjectName('section');head.addWidget(self.heading);head.addWidget(info_button(intro.text()));head.addStretch();layout.addLayout(head)
         self.open_now=QLabel();self.open_now.setObjectName('muted');self.open_now.hide()
-        filters=QHBoxLayout();self.session_filter=QComboBox()
+        filters=QHBoxLayout();filters.setSpacing(8);self.session_filter=QComboBox()
         for label,key in [('Current session + unassigned','current'),('All sessions','all'),('Needs assignment','pending')]:self.session_filter.addItem(label,key)
         self.athlete_filter=QComboBox();self.athlete_filter.addItem('All athletes','');self.route_filter=QComboBox();self.route_filter.addItem('All route versions','')
-        for name,control in [('Session scope',self.session_filter),('Athlete',self.athlete_filter),('Route version',self.route_filter)]:control.setAccessibleName(name);control.setMinimumWidth(90);control.setSizePolicy(QSizePolicy.Policy.Ignored,QSizePolicy.Policy.Fixed);filters.addWidget(control,1);control.currentIndexChanged.connect(self.render)
-        self.assign_button=assign=QPushButton('Assign selected…');assign.clicked.connect(self.assign_selected);filters.addWidget(assign);layout.addLayout(filters)
-        bar = QHBoxLayout();self.buttons = {};self.more_actions={};more=QPushButton("More ▾");more_menu=QMenu(more);more.setMenu(more_menu)
+        for name,control in [('Session scope',self.session_filter),('Athlete',self.athlete_filter),('Route version',self.route_filter)]:control.setAccessibleName(name);control.setToolTip(name);control.setProperty('chip',True);control.setMinimumWidth(90);control.setMaximumWidth(260);control.setSizePolicy(QSizePolicy.Policy.Ignored,QSizePolicy.Policy.Fixed);filters.addWidget(control,1);control.currentIndexChanged.connect(self.render)
+        self.assign_button=assign=QPushButton('Assign selected…');assign.clicked.connect(self.assign_selected);filters.addWidget(assign)
+        bar = filters;self.buttons = {};self.more_actions={};more=QPushButton("More ▾");more_menu=QMenu(more);more.setMenu(more_menu)
         for key, text, callback, tip in [
             ('add', 'Add videos…', window.open_video, 'Add video files to this project.'),
             ('recommended', 'Prepare all recommended', lambda:self.prepare(recommended=True), 'Queue every video marked Recommended that has no smooth preview yet.'),
@@ -114,17 +114,18 @@ class LibraryTab(QWidget):
             ('remove', 'Remove from project', self.remove, 'Remove the selected videos from this project. Video files and saved measurements are kept.'),
             ('storage', 'Storage…', window.show_storage, 'See and limit disk space used by previews and frame indexes.')]:
             b = QPushButton(text);b.setToolTip(tip);b.clicked.connect(callback);self.buttons[key] = b
-            if key in ("add","selected","cancel"):bar.addWidget(b)
+            if key in ("add","selected","cancel"):bar.insertWidget(len(self.buttons)-1,b)
             else:
                 b.hide();action=more_menu.addAction(text);action.setToolTip(tip);action.triggered.connect(callback);self.more_actions[key]=action
-        self.buttons['add'].setProperty('role', 'primary');self.buttons['cancel'].setEnabled(False);bar.addStretch();bar.addWidget(more);layout.addLayout(bar)
-        self.selection_hint=QLabel();self.selection_hint.setObjectName('muted');self.selection_hint.setWordWrap(True);layout.addWidget(self.selection_hint)
+        self.buttons['add'].setProperty('role', 'primary');self.buttons['cancel'].setEnabled(False);bar.insertStretch(3);bar.addWidget(more);layout.addLayout(bar)
+        self.selection_hint=QLabel();self.selection_hint.setObjectName('muted');self.selection_hint.setWordWrap(True);self.selection_hint.hide()
         self.table = QTableWidget(0, len(COLUMNS));self.table.setHorizontalHeaderLabels(COLUMNS);self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows);self.table.setAlternatingRowColors(True);self.table.setShowGrid(False);self.table.verticalHeader().hide()
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents);self.table.horizontalHeader().setStretchLastSection(False);self.table.horizontalHeader().setSectionResizeMode(0,QHeaderView.ResizeMode.Stretch);self.table.horizontalHeader().moveSection(10,1);self.table.horizontalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignLeft|Qt.AlignmentFlag.AlignVCenter)
-        self.details=QCheckBox('Show recording details');self.details.toggled.connect(self.show_details);layout.addWidget(self.details);self.show_details(False)
+        self.details=QCheckBox('Show recording details');self.details.toggled.connect(self.show_details);self.details.hide();self.show_details(False)
+        more_menu.addSeparator();details=more_menu.addAction('Show recording details');details.setCheckable(True);details.toggled.connect(self.details.setChecked)
         self.table.itemSelectionChanged.connect(self.selection_changed);self.table.cellDoubleClicked.connect(self.open_row);self.table.setToolTip('Double-click a video to open it in the Video workspace.');layout.addWidget(self.table, 1)
-        self.summary = QLabel();self.summary.setObjectName('muted');self.summary.setWordWrap(True);layout.addWidget(self.summary)
+        layout.addStretch();self.summary = QLabel();self.summary.setObjectName('muted');self.summary.setWordWrap(True);layout.addWidget(self.summary)
     def show_details(self,show):
         for column in (2,3,4,5,6,9):self.table.setColumnHidden(column,not show)
     def update_heading(self):
@@ -190,7 +191,7 @@ class LibraryTab(QWidget):
             if not Path(path).is_file():values=[Path(path).name]+['']*6+['Missing — double-click to locate']+['']*2
             elif 'error' in m:values = [Path(path).name, '', '', '', '', '', '', self.status.get(path, 'Unreadable'), '', m['error']]
             elif m:
-                ready = self.preview_ready(m);advice = 'Ready' if ready else recommendation(m)
+                ready = self.preview_ready(m);advice = 'Ready' if ready else {'Optional':'Not needed'}.get(recommendation(m),recommendation(m))
                 if not ready and advice == 'Recommended' and m['preview_bytes']:wanted += m['preview_bytes']
                 w, h = (m['height'], m['width']) if m['rotation'] in (90, 270) else (m['width'], m['height'])
                 values = [m['file'], state['document']['climber'] if state else '—', f'{w}×{h}', f"{m['fps']:.2f}".rstrip('0').rstrip('.') if m['fps'] else '?', m['codec'].upper(),
@@ -198,19 +199,19 @@ class LibraryTab(QWidget):
                 candidates += (not ready and advice == 'Recommended')
                 low_fps += bool(m['fps'] and m['fps'] < 49);low_res += min(m['width'], m['height']) < 1080;hdr += bool(m['hdr'])
             else:values = [Path(path).name]+['']*6+[self.status.get(path, 'Waiting')]+['']*2
-            current=bool(self.window.video_path and path==str(self.window.video_path.resolve()));missing=not Path(path).is_file();readiness='Open now' if current else 'Missing source' if missing else 'Cannot read' if 'error' in m else 'Can measure' if m else 'Reading metadata'
+            current=bool(self.window.video_path and path==str(self.window.video_path.resolve()));missing=not Path(path).is_file();readiness='Open' if current else 'Missing source' if missing else 'Cannot read' if 'error' in m else 'Ready' if m else 'Reading metadata'
             values += [readiness,'']
             assignments=self.path_assignments(path)
             values[1]=' / '.join(dict.fromkeys(identity.athlete_label(a['athlete']) for a in assignments)) or 'Needs assignment'
             count=sum(p==path for p in self.window.workspace.states)+sum(e['path']==path for e in self.window.workspace.attempts)
             values+=[' / '.join(dict.fromkeys(identity.session_label(a['session']) for a in assignments)),' / '.join(dict.fromkeys(identity.route_label(a['route']) for a in assignments)),str(count) if count else 'Not started']
-            if not assignments and not missing:values[10]='Needs assignment · can prepare preview'
+            if not assignments and not missing:values[10]='Needs athlete'
             for col, value in enumerate(values):
                 item = QTableWidgetItem(str(value))
                 if current and col in (0,10):font=item.font();font.setBold(True);item.setFont(font)
                 if col == 9 and value:item.setToolTip('Milliseconds/frame is nominal spacing, not an error bound; actual timestamps can vary. <1080p: small hands and quickdraws. HDR: colours may look flat.')
                 if col in (0,1):item.setToolTip('\n'.join(identity.session_label(a['session'])+' / '+identity.route_label(a['route']) for a in assignments) or 'Assign athlete, session and route before analysis.')
-                if col == 7:item.setToolTip({'Ready': 'Smooth preview prepared: scrubbing and stepping use it automatically.', 'Recommended': '4K or HEVC: scrubbing the original is slow. Prepare a smooth preview.', 'Optional': 'Usually smooth enough without a preview.'}.get(value, ''))
+                if col == 7:item.setToolTip({'Ready': 'Smooth preview prepared: scrubbing and stepping use it automatically.', 'Recommended': '4K or HEVC: scrubbing the original is slow. Prepare a smooth preview.', 'Not needed': 'Usually smooth enough without a preview.'}.get(value, ''))
                 self.table.setItem(row, col, item)
             action=self.table.cellWidget(row,11)
             if action is None:
@@ -218,6 +219,7 @@ class LibraryTab(QWidget):
             action.setProperty('videoRow',row);action.setText('Locate…' if missing else 'Return to video' if current else 'Open')
         root = self.window.data_root();cache = sum(r['preview_bytes']+r['index_bytes'] for r in storage.entries(root));limit = float(self.window.settings.value('cache_limit_gb', storage.DEFAULT_LIMIT_GB))
         self.table.setColumnHidden(12,self.session_filter.currentData()=='current')
+        rows=self.table.rowCount();self.table.setMaximumHeight(self.table.horizontalHeader().height()+sum(self.table.rowHeight(r) for r in range(rows))+8 if 0<rows<=12 else 16777215)
         free = shutil.disk_usage(root if root.exists() else Path.home()).free
         flags = [f'{n} {what}' for n, what in ((low_fps, 'under 50 fps (wider frame spacing)'), (low_res, 'below 1080p'), (hdr, 'HDR')) if n]
         self.summary.setText(f'{len(paths)} videos'+(' · '+', '.join(flags) if flags else '')+f' · cache {storage.human(cache)} of {limit:g} GB · {storage.human(free)} free'

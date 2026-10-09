@@ -1,7 +1,7 @@
 """A stable keyboard focus ring for the shared desktop button roles."""
 from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QPoint
 from PySide6.QtGui import QPainter, QPen
-from PySide6.QtWidgets import QPushButton as NativeButton, QLabel, QStyleOptionButton, QStylePainter, QStyle, QTabWidget, QScrollArea, QFrame, QToolTip
+from PySide6.QtWidgets import QPushButton as NativeButton, QLabel, QStyleOptionButton, QStylePainter, QStyle, QTabWidget, QScrollArea, QFrame, QToolTip, QWidget, QHBoxLayout, QListWidget, QStackedWidget
 
 
 KEYBOARD_REASONS = (Qt.FocusReason.TabFocusReason, Qt.FocusReason.BacktabFocusReason, Qt.FocusReason.ShortcutFocusReason)
@@ -43,6 +43,21 @@ class Banner(QFrame):
             self.animation=QPropertyAnimation(self,b'maximumHeight',self);self.animation.setDuration(180);self.animation.setStartValue(0);self.animation.setEndValue(target)
             self.animation.setEasingCurve(QEasingCurve.Type.OutCubic);self.animation.finished.connect(lambda:self.setMaximumHeight(16777215));self.animation.start()
         else:super().setVisible(visible)
+
+
+class SideTabs(QWidget):
+    """A vertical list of pages beside a stack: a second tab style, so nested tabs stop looking alike."""
+    def __init__(self):
+        super().__init__();row=QHBoxLayout(self);row.setContentsMargins(0,0,0,0);row.setSpacing(12)
+        self.list=QListWidget();self.list.setObjectName('sideTabs');self.list.setFixedWidth(150);self.list.setFrameShape(QFrame.Shape.NoFrame);self.stack=QStackedWidget()
+        row.addWidget(self.list);row.addWidget(self.stack,1);self.list.currentRowChanged.connect(self.stack.setCurrentIndex);self.currentChanged=self.list.currentRowChanged
+    def addTab(self,widget,title):self.stack.addWidget(widget);self.list.addItem(title.replace('&&','&'));self.list.setCurrentRow(max(0,self.list.currentRow()))
+    def setCurrentIndex(self,index):self.list.setCurrentRow(index)
+    def currentIndex(self):return self.list.currentRow()
+    def count(self):return self.list.count()
+    def widget(self,index):return self.stack.widget(index)
+    def currentWidget(self):return self.stack.currentWidget()
+    def tabText(self,index):return self.list.item(index).text()
 
 
 def info_button(text):

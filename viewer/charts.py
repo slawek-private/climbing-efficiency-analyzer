@@ -41,7 +41,7 @@ class ComparisonCharts(QWidget):
             note=QLabel(spec['note']);note.setObjectName('muted');note.setWordWrap(True);column.addWidget(note)
             svg,height,step=svg_chart(spec,self.dark);column.addWidget(ResponsiveChart(svg,height,[row_text(r,spec) for r in spec['rows']],step))
         for index,spec in enumerate([arrival,None,recovery,foot]):
-            card=QWidget();card.setObjectName('dashboardCard');v=QVBoxLayout(card);v.setContentsMargins(12,12,12,12)
+            card=QWidget();card.setObjectName('dashboardCard');card.setProperty('primary',index==0);v=QVBoxLayout(card);v.setContentsMargins(12,12,12,12)
             if index==1:
                 line=QHBoxLayout();line.addWidget(QLabel('Clip duration · matching draws'));selector=QComboBox()
                 for i in range(len(draws)):selector.addItem('Quickdraw '+draws[i],i)

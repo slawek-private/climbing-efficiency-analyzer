@@ -16,14 +16,16 @@ class CompareScope(QWidget):
         box=QVBoxLayout(self);box.setContentsMargins(0,0,0,0);top=QHBoxLayout();box.addLayout(top);layout=QHBoxLayout();box.addLayout(layout)
         self.intent=QComboBox()
         for label,value in [('Training · athlete progress','personal'),('Training · team review','team'),('Competition · round','competition')]:self.intent.addItem(label,value)
-        self.athlete=QComboBox();self.athlete.setAccessibleName('Athlete for training progress');self.history=QCheckBox('Include previous training sessions')
+        self.athlete=QComboBox();self.athlete.setAccessibleName('Athlete for training progress');self.history=QCheckBox('Earlier sessions')
         self.team=QComboBox();self.team.addItem('All session athletes','');self.team.setAccessibleName('Optional team roster filter')
         self.history.setToolTip('Explicitly widen to training sessions on this route version, then choose exact attempts. Competition is excluded.')
         top.addWidget(self.intent);top.addWidget(self.athlete,1);top.addWidget(self.team,1);top.addWidget(self.history)
         self.route=QComboBox();self.reference=QComboBox();self.point=QComboBox();self.subjects=QPushButton('Choose athletes & attempts…')
         for control in (self.athlete,self.team,self.route,self.reference,self.point):
             control.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon);control.setMinimumContentsLength(10);control.setMinimumWidth(90);control.setSizePolicy(QSizePolicy.Policy.Ignored,QSizePolicy.Policy.Fixed)
-        for name,control in [('Route',self.route),('Reference',self.reference),('Align / checkpoint',self.point)]:layout.addWidget(QLabel(name));layout.addWidget(control,1)
+        for name,control in [('Route',self.route),('Reference',self.reference),('Align / checkpoint',self.point)]:
+            caption=QLabel(name);caption.setObjectName('muted');layout.addWidget(caption);layout.addWidget(control,1);control.setAccessibleName(name)
+        for control in (self.intent,self.athlete,self.team,self.route,self.reference,self.point):control.setProperty('chip',True)
         layout.addWidget(self.subjects);self.subjects.clicked.connect(self.choose_subjects)
         self.intent.currentIndexChanged.connect(self.scope_changed);self.athlete.currentIndexChanged.connect(self.scope_changed);self.history.toggled.connect(self.scope_changed)
         self.team.currentIndexChanged.connect(self.scope_changed)

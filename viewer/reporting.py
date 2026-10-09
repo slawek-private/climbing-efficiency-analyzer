@@ -85,7 +85,7 @@ def svg_chart(spec,dark=False):
     maximum=max([r.get('value') or 0 for r in spec['rows']]+[1])
     out=f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 {height}" role="img" aria-label="{escape(spec["title"]+'. '+'. '.join(row_text(r,spec) for r in spec['rows']),quote=True)}"><title>{escape(spec["title"]+". "+spec["note"])}</title><defs><pattern id="hidden" width="6" height="6" patternUnits="userSpaceOnUse"><path d="M0 6L6 0" stroke="{ink}" stroke-width="1"/></pattern><pattern id="unchecked" width="6" height="6" patternUnits="userSpaceOnUse"><circle cx="3" cy="3" r="1" fill="{ink}"/></pattern></defs>'
     for i,r in enumerate(spec['rows']):
-        y=12+i*step;label=('Ref · ' if r.get('ref') else '')+r['name'];tip=row_text(r,spec)
+        y=12+i*step;parts=r['name'].split(' · ');label=('Ref · ' if r.get('ref') else '')+' · '.join(parts[:2]);context=' · '.join(parts[2:]);tip=row_text(r,spec)
         out+=f'<g><title>{escape(tip)}</title><text x="0" y="{y+16}" font-size="15" fill="{ink}">{escape((label[:38] if foot else label[:28]+('…' if len(label)>28 else '')))}</text>'
         if foot:
             out+=f'<text x="0" y="{y+37}" font-size="13" fill="{ink}">{escape(shown(r["slips"]," slips")+" · "+shown(r["candidates"]," candidates")+" · unplanned "+shown(r["unplanned"])+" · intentional "+shown(r["intentional"]))}</text>'
@@ -99,7 +99,7 @@ def svg_chart(spec,dark=False):
             value=r['value'];w=245*(value or 0)/maximum
             if value is not None:out+=f'<rect x="250" y="{y}" width="{w}" height="21" rx="2" fill="{accent if r.get("ref") else neutral}"/>'
             out+=f'<text x="505" y="{y+16}" font-size="14" fill="{ink}">{escape(shown(value,spec["unit"]))}</text>'
-            if not spec.get('compact'):out+=f'<text x="0" y="{y+36}" font-size="12" fill="{ink}">{escape(r["state"])}</text>'
+            if not spec.get('compact'):out+=f'<text x="0" y="{y+36}" font-size="12" fill="{ink}">{escape(r["state"]+(" · "+context if context else ""))}</text>'
         out+='</g>'
     if not spec['rows']:out+=f'<text x="0" y="30" fill="{ink}" font-size="15">Choose attempts to compare.</text>'
     return out+'</svg>',height,step
