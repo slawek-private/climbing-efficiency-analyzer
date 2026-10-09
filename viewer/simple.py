@@ -476,10 +476,10 @@ class Window(LegacyWindow):
             role='stop' if pending else 'start'
             if control.property('role')!=role:control.setProperty('role',role);control.setStyleSheet('')
             visible=pending if pending and pending['start']['seconds']<=now else current
-            name=kind.capitalize();text='Start '+name.lower()
+            name=kind.capitalize();text=name
             if pending and visible:text=f'Stop {name.lower()}\n{now-visible["start"]["seconds"]:.1f} s'
-            elif pending:text=f'{name} · seek forward'
-            elif visible:text=f'{name} · {visible["end"]["seconds"]-visible["start"]["seconds"]:.1f} s\nEdit interval'
+            elif pending:text=f'{name}\nseek forward'
+            elif visible:text=f'{name} {visible["end"]["seconds"]-visible["start"]["seconds"]:.1f} s\nEdit interval'
             control.setText(text);control.setAccessibleName(hand.capitalize()+' hand · '+('Stop ' if pending else 'Edit ' if visible else 'Start ')+kind);control.setEnabled(bool(d))
             if pending and kind=='clip':control.setToolTip(f"Quickdraw {pending['target']} · timing is saved when stopped; choose its method afterwards")
             if kind=='chalk' and d:control.setToolTip(f"{hand.capitalize()} hand chalk · {sum(1 for e in d['events'] if e['kind']=='chalk' and e['hand']==hand)} recorded · press to start or stop (key {control.key})")

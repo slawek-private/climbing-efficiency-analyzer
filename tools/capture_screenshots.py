@@ -77,6 +77,7 @@ def main():
         # A running left-hand rest shows the timers' active state.
         window.history.document['open_events'].append({'kind':'rest','hand':'left','target':None,'start':window.reader.point(342),'confidence':1,'notes':''});window.refresh()
         window.autosave_timer.stop();window.saved=copy.deepcopy(window.document());window.refresh_live()
+        apply_theme(window,'dark');window.show_home();settle(lambda:not (window.home.worker and window.home.worker.isRunning()));settle();window.grab().save(str(destination/'home.png'));window.show_workspace()
         for theme in ('light','dark'):
             apply_theme(window,theme);window.show_view(window.measure_page);settle();window.grab().save(str(destination/f'workspace-{theme}.png'))
         window.review_tabs.setCurrentWidget(window.events_card);window.events_body.show();window.events_toggle.setText('▾  Events');settle();window.measurement_scroll.verticalScrollBar().setValue(0);settle();window.grab().save(str(destination/'workspace-events.png'));window.review_tabs.setCurrentWidget(window.clip_review)
@@ -102,7 +103,7 @@ def main():
         export_report([example],target,sources={example['attempt_id']:root/'demo-1.mkv'},media='clips',pdf=True)
         print('Fictional coaching example:',target)
         window.saved=copy.deepcopy(window.document());window.close()
-    print('Captured eleven screenshots using synthetic data only:',destination)
+    print('Captured twelve screenshots using synthetic data only:',destination)
     return 0
 
 if __name__=='__main__':raise SystemExit(main())

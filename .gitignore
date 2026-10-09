@@ -29,6 +29,7 @@ __pycache__/
 *.jpgpack
 
 # Explicit exception: generated synthetic documentation screenshots only
+!/docs/screenshots/home.png
 !/docs/screenshots/workspace-light.png
 !/docs/screenshots/workspace-dark.png
 !/docs/screenshots/workspace-events.png

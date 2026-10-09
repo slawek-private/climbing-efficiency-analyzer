@@ -3,6 +3,7 @@
 Fully local human-assisted climbing measurements for Windows and Apple Silicon macOS.
 Automatic inference remains a feasibility experiment, not a validated autonomous pipeline.
 
+![Climb Studio Home (synthetic demo data)](docs/screenshots/home.png)
 ![Climb Studio workspace (synthetic demo data)](docs/screenshots/workspace-dark.png)
 
 ## Screenshots
@@ -42,9 +43,10 @@ Windows: `tools/windows/start_manual_viewer.cmd`.
 Mac: `tools/macos/start_manual_viewer.command` after [macOS setup](docs/SETUP_MACOS.md).
 macOS source support and an Apple Silicon CI job are provided; M3 Pro interactive validation remains required.
 
-Three places: **Video analysis** for one climb, **Compare** climbs (overview, detailed metrics,
-side by side) and **Library**. Measurements save automatically; drop videos onto
-the window to start.
+The app opens on **Home**: start a training session or a competition event, open a single
+video, import a project, or continue a project from its tile. Three places follow:
+**Video analysis** for one climb, **Compare** climbs (overview, more metrics, side by side)
+and **Videos**. Measurements save automatically; drop videos onto the window to start.
 
 Organise work in **projects**, with explicit **Training** or **Competition** sessions,
 stable athletes and route versions, and

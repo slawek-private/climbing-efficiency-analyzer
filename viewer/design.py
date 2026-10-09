@@ -70,7 +70,7 @@ QPushButton[kind] { min-height: 30px; text-align: left; }
 QPushButton[role="start"] { background: $background; border-color: transparent; }
 QPushButton[role="choice"] { background: $background; border-color: transparent; text-align: left; }
 QPushButton[role="choice"]:checked { background: $selected; }
-QPushButton[keycap="true"] { text-align: left; padding-right: 32px; }
+QPushButton[keycap="true"] { text-align: left; padding-right: 24px; }
 QPushButton:disabled { background: $background; color: $muted; border-color: $soft; }
 QPushButton::menu-indicator { width: 0; }
 QLineEdit,QSpinBox,QDoubleSpinBox,QComboBox,QPlainTextEdit,QDateEdit { background: $panel; border: 1px solid $line; border-radius: 6px; padding: 5px 8px; min-height: 20px; selection-background-color: $accent; selection-color: white; }
@@ -380,7 +380,7 @@ def build(w):
     w.set_frame_step(w.frame_step.value())
     # The measuring panel follows the climb: athlete, start and end, timers during the climb, review.
     panel=QWidget();panel.setObjectName('page');measure=QVBoxLayout(panel);measure.setContentsMargins(10,10,10,10);measure.setSpacing(8);panel.setMinimumWidth(300);w.analysis_panel=panel
-    split.addWidget(panel);split.setSizes([1000,340]);w.workspace_tabs=None
+    split.addWidget(panel);split.setSizes([980,360]);w.workspace_tabs=None
     w.review_tabs=ReviewTabs(w);w.review_tabs.setDocumentMode(True);w.review_tabs.tabBar().setObjectName('segment');w.review_tabs.tabBar().setExpanding(False)
     w.empty_panel=label('Load a video to start measuring.\n\nThe panel then follows the climb: name the athlete, mark the start, time each hand’s clips, rests and chalking, mark the end.','muted');measure.addWidget(w.empty_panel)
     w.boundary_box,box=step_card('')
