@@ -60,6 +60,11 @@ installer's SHA-256 and release compatibility manifest (OS, architecture and
 supported source versions). Downloads wait for an explicit restart. Recording
 tips and the guided tour are available from Help, when you want them.
 
+**0.26.0:** Home as the first screen with training, competition, single-video and import
+flows, a splash and in-card loading, one app bar with a tinted icon set and styled controls,
+a hero climb time, compare chips, a shared side-by-side transport, grouped settings and a
+tips page. See [release notes](docs/RELEASE_0.26.0.md).
+
 **0.25.0:** a compact video-first layout, fixed hand controls, separate review views,
 clearer focus/selection states, and quieter comparison/library/report presentation.
 See [release notes](docs/RELEASE_0.25.0.md).
