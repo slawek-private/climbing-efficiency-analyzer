@@ -97,14 +97,14 @@ class LibraryTab(QWidget):
         layout = QVBoxLayout(self);layout.setContentsMargins(14, 12, 14, 10);layout.setSpacing(8)
         intro = QLabel('Every video in this project with its recording settings. Prepare smooth previews in bulk and leave it running: '
                        'videos are processed one after another in the background while you keep working. Originals are never modified.')
-        self.heading=QLabel();self.heading.setObjectName('section');layout.addWidget(self.heading)
-        self.open_now=QLabel();self.open_now.setObjectName('muted');self.open_now.setWordWrap(True);layout.addWidget(self.open_now)
+        from .controls import info_button
+        head=QHBoxLayout();self.heading=QLabel();self.heading.setObjectName('section');head.addWidget(self.heading);head.addWidget(info_button(intro.text()));head.addStretch();layout.addLayout(head)
+        self.open_now=QLabel();self.open_now.setObjectName('muted');self.open_now.hide()
         filters=QHBoxLayout();self.session_filter=QComboBox()
         for label,key in [('Current session + unassigned','current'),('All sessions','all'),('Needs assignment','pending')]:self.session_filter.addItem(label,key)
         self.athlete_filter=QComboBox();self.athlete_filter.addItem('All athletes','');self.route_filter=QComboBox();self.route_filter.addItem('All route versions','')
         for name,control in [('Session scope',self.session_filter),('Athlete',self.athlete_filter),('Route version',self.route_filter)]:control.setAccessibleName(name);control.setMinimumWidth(90);control.setSizePolicy(QSizePolicy.Policy.Ignored,QSizePolicy.Policy.Fixed);filters.addWidget(control,1);control.currentIndexChanged.connect(self.render)
         self.assign_button=assign=QPushButton('Assign selected…');assign.clicked.connect(self.assign_selected);filters.addWidget(assign);layout.addLayout(filters)
-        intro.setWordWrap(True);intro.setObjectName('muted');layout.addWidget(intro)
         bar = QHBoxLayout();self.buttons = {};self.more_actions={};more=QPushButton("More ▾");more_menu=QMenu(more);more.setMenu(more_menu)
         for key, text, callback, tip in [
             ('add', 'Add videos…', window.open_video, 'Add video files to this project.'),
@@ -214,7 +214,7 @@ class LibraryTab(QWidget):
                 self.table.setItem(row, col, item)
             action=self.table.cellWidget(row,11)
             if action is None:
-                action=QPushButton();action.setProperty('role','quiet');action.clicked.connect(lambda checked=False,b=action:self.row_action(b.property('videoRow'),True));self.table.setCellWidget(row,11,action)
+                action=QPushButton();action.clicked.connect(lambda checked=False,b=action:self.row_action(b.property('videoRow'),True));self.table.setCellWidget(row,11,action)
             action.setProperty('videoRow',row);action.setText('Locate…' if missing else 'Return to video' if current else 'Open')
         root = self.window.data_root();cache = sum(r['preview_bytes']+r['index_bytes'] for r in storage.entries(root));limit = float(self.window.settings.value('cache_limit_gb', storage.DEFAULT_LIMIT_GB))
         self.table.setColumnHidden(12,self.session_filter.currentData()=='current')

@@ -9,6 +9,7 @@ from PySide6.QtCore import Qt,QTimer,QSettings
 from PySide6.QtGui import QShortcut,QKeySequence
 from PySide6.QtWidgets import QApplication,QWidget,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,QLineEdit,QGroupBox,QTableWidget,QTableWidgetItem,QFileDialog,QMessageBox,QInputDialog,QComboBox,QDialog,QDialogButtonBox,QCheckBox
 from .app import Window as LegacyWindow
+from . import design
 from .labels import ROOT, make_event,History,empty_labels,load,save
 from .version import APP_NAME,__version__
 from .comparison import export_comparison,load_collection,rows
@@ -54,7 +55,7 @@ class Window(LegacyWindow):
             b=QPushButton(title);b.clicked.connect(callback);toolbar.addWidget(b)
         splitter=layout.itemAt(2).widget();splitter.widget(1).hide()
         panel=QWidget();side=QVBoxLayout(panel);side.setSpacing(5)
-        heading=QLabel('Measure this climb');heading.setStyleSheet('font-size:24px;font-weight:700');side.addWidget(heading)
+        heading=QLabel('Measure this climb');side.addWidget(heading)
         instruction=QLabel('Pause on the exact frame, then press the action below.\nAll measurements use the frame currently on screen.');instruction.setWordWrap(True);side.addWidget(instruction)
         identity=QHBoxLayout();identity.addWidget(QLabel('Athlete'));self.climber.setParent(panel);identity.addWidget(self.climber);identity.addWidget(QLabel('Attempt'));self.attempt.setParent(panel);identity.addWidget(self.attempt);side.addLayout(identity)
         group=QGroupBox('1   Climb start and end');g=QVBoxLayout(group)
@@ -82,7 +83,7 @@ class Window(LegacyWindow):
         group=QGroupBox('4   Time each hand stays on a hold');g=QVBoxLayout(group);self.hand_status={};self.grab_buttons={};self.release_buttons={}
         for hand,spin in [('left',self.left_hold),('right',self.right_hold)]:
             line=QHBoxLayout();line.addWidget(QLabel(hand.upper()+' HAND · hold #'));spin.setParent(group);line.addWidget(spin);g.addLayout(line)
-            status=QLabel();status.setStyleSheet('font-weight:700;font-size:16px');g.addWidget(status);self.hand_status[hand]=status
+            status=QLabel();g.addWidget(status);self.hand_status[hand]=status
             line=QHBoxLayout()
             for title,opening,store in [('GRAB · start hold timer',True,self.grab_buttons),('RELEASE · stop hold timer',False,self.release_buttons)]:
                 b=QPushButton(title);b.clicked.connect(lambda checked=False,h=hand,o=opening:self.hand_action(h,o));line.addWidget(b);store[hand]=b
@@ -104,6 +105,10 @@ class Window(LegacyWindow):
         self.simple_ready=True
         from .design import build
         build(self);self.install_timer_shortcuts()
+        from PySide6.QtWidgets import QGraphicsOpacityEffect
+        from PySide6.QtCore import QPropertyAnimation
+        self.save_effect=QGraphicsOpacityEffect(self.save_state);self.save_state.setGraphicsEffect(self.save_effect);self.save_fade=QTimer(self);self.save_fade.setSingleShot(True);self.save_fade.setInterval(3000)
+        self.save_animation=QPropertyAnimation(self.save_effect,b'opacity',self);self.save_animation.setDuration(400);self.save_animation.setEndValue(0.0);self.save_fade.timeout.connect(self.save_animation.start)
         points=self.workspace.shared_points();self.point_name.setText(self.settings.value('last_point','') or (points[-1] if points else 'A'))
         self.refresh_live();self.refresh_collection();self.refresh_preview_status();self.update_project_label()
         if not video and self.workspace.videos:self.show_view(self.library)
@@ -282,7 +287,7 @@ class Window(LegacyWindow):
         if self.playing and number==len(self.reader.times)-1 and not self.replay_range:self.pause()
         if self.playing and number!=self.decode_requested:self.submit_decode();self.decode_poll.start()
     def start_playback(self):
-        self.play_after_decode=False;self.playing=True;self.reset_clock();self.timer.start();self.play_button.setText('Pause · Space')
+        self.play_after_decode=False;self.playing=True;self.reset_clock();self.timer.start();self.play_button.setText('Pause')
     def toggle_play(self):
         if self.sync_active():return self.sync_view.toggle_play()
         if not self.reader:return
@@ -432,9 +437,13 @@ class Window(LegacyWindow):
             self.end_edit.setVisible(bool(d and d['end']));self.end_clear.setVisible(bool(d and d['end']))
             failure=self.save_error or self.workspace_error or self.workspace.load_error
             self.save_state.setProperty('state','error' if failure else 'ok');self.save_state.setStyleSheet('font-weight:600;' if failure else '')
+            self.play_button.setProperty('iconName','pause' if self.playing else 'play');self.play_button.setIcon(design.icon(self.play_button.property('iconName'),'#ffffff'))
             persisted=bool(self.label_path and self.label_path.exists() and self.saved==d)
             self.save_state.setText('⚠ Not saved' if failure else '' if not d else 'Saving…' if self.autosave_timer.isActive() else '✓ Saved' if persisted else 'No changes saved yet')
             self.save_state.setToolTip(failure or ('Saved to '+str(self.label_path) if persisted else 'Make a measurement or choose Save to create a labels file.'))
+            if self.save_state.text()!=getattr(self,'save_shown',None):
+                self.save_shown=self.save_state.text();self.save_effect.setOpacity(1.0);self.save_fade.stop()
+                if self.save_state.text()=='✓ Saved':self.save_fade.start()
             self.save_banner.setVisible(bool(failure));self.save_detail.setText(failure or '')
         self.start_status.setText('Start: '+(f"{d['start']['seconds']:.3f} s in video" if d and d['start'] else 'not marked'))
         self.end_status.setText('End: '+(f"{d['end']['seconds']:.3f} s · "+{'failed':'Fell / failed','completed':'Topped'}.get(d['outcome'],d['outcome']) if d and d['end'] else 'not marked'))
@@ -818,7 +827,7 @@ class Window(LegacyWindow):
         self.fill_leaderboard(overview,points);self.pattern_dashboard.checkpoint=self.compare_scope.point.currentText();self.pattern_dashboard.update_documents(documents)
         self.comparison_charts.checkpoint=self.compare_scope.point.currentText();self.comparison_charts.set_documents(documents)
         reference=documents[0]['climber']+' · '+documents[0]['attempt'] if documents else 'none'
-        self.collection_summary.setText(self.compare_scope.description()+f' · {len(documents)} attempts · route {self.compare_scope.route.currentText()} · reference {reference}. Recorded recovery is descriptive. Footwork counts apply only to checked footage. Hover for exact values; double-click an attempt to open its video.')
+        self.collection_summary.setText(self.compare_scope.description()+f' · {len(documents)} attempts · reference {reference}');self.collection_summary.setToolTip(f'Route {self.compare_scope.route.currentText()}. Recorded recovery is descriptive. Footwork counts apply only to checked footage. Hover for exact values; double-click an attempt to open its video.')
         if self.sync_active():self.sync_view.activate()
     def fill_leaderboard(self,overview,points):
         """Six summary columns; every original measurement remains in exports."""

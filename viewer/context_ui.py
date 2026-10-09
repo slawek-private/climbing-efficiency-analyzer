@@ -199,20 +199,25 @@ def organise(w):
 
 
 class SessionBar(QWidget):
+    """Current session as one menu button: switch, create, manage athletes and routes."""
     def __init__(self,w):
-        super().__init__();self.w=w;line=QHBoxLayout(self);line.setContentsMargins(0,0,0,0)
-        self.sessions=QComboBox();self.sessions.setAccessibleName('Current session');self.sessions.setMinimumWidth(200);self.sessions.setSizePolicy(QSizePolicy.Policy.Ignored,QSizePolicy.Policy.Fixed);line.addWidget(self.sessions,1)
-        new=QPushButton('New session…');new.setProperty('role','quiet');menu=QMenu(new);menu.addAction('Training session…',lambda:w.new_session('training'));menu.addAction('Competition event…',lambda:w.new_session('competition'));new.setMenu(menu);line.addWidget(new)
-        manage=QPushButton('Athletes && sessions ▾');manage.setProperty('role','quiet');menu=QMenu(manage);manage.setMenu(menu);line.addWidget(manage)
-        for title,callback in [('Add athlete…',lambda:self.add()),('Rename / edit athlete…',self.edit),('Athlete history…',self.history),('Add route version…',lambda:create_route(w)),('Organise existing attempts…',lambda:organise(w))]:menu.addAction(title,callback)
+        super().__init__();self.w=w;line=QHBoxLayout(self);line.setContentsMargins(0,0,0,0);line.setSpacing(8)
+        self.sessions=QComboBox();self.sessions.setAccessibleName('Current session');self.sessions.hide();line.addWidget(self.sessions)
+        self.button=QPushButton('Session ▾');self.button.setProperty('role','quiet');self.button.setProperty('elide',True);self.button.setMaximumWidth(300);self.button.setSizePolicy(QSizePolicy.Policy.Maximum,QSizePolicy.Policy.Fixed);self.button.setAccessibleName('Current session');self.menu=QMenu(self.button);self.button.setMenu(self.menu);line.addWidget(self.button)
         self.sessions.currentIndexChanged.connect(self.changed)
-        self.pending=QPushButton();self.pending.setProperty('role','quiet');self.pending.clicked.connect(self.review_pending);line.addWidget(self.pending)
+        self.pending=QPushButton();self.pending.setProperty('role','chip');self.pending.clicked.connect(self.review_pending);self.pending.setToolTip('Clips whose method is still unanswered, across this project');line.addWidget(self.pending)
     def refresh(self):
         self.sessions.blockSignals(True);self.sessions.clear();self.sessions.addItem('Unorganised drafts','')
         for item in self.w.workspace.organisation['sessions']:self.sessions.addItem(identity.session_label(item),item['id'])
         self.sessions.setCurrentIndex(max(0,self.sessions.findData(self.w.workspace.session_id)));self.sessions.blockSignals(False)
+        self.button.setText(self.sessions.currentText()+'  ▾');self.button.setToolTip('Session: '+self.sessions.currentText())
+        self.menu.clear()
+        for i in range(self.sessions.count()):
+            action=self.menu.addAction(self.sessions.itemText(i),lambda checked=False,n=i:self.sessions.setCurrentIndex(n));action.setCheckable(True);action.setChecked(i==self.sessions.currentIndex())
+        self.menu.addSeparator();self.menu.addAction('New training session…',lambda:self.w.new_session('training'));self.menu.addAction('New competition event…',lambda:self.w.new_session('competition'));self.menu.addSeparator()
+        for title,callback in [('Add athlete…',lambda:self.add()),('Rename / edit athlete…',self.edit),('Athlete history…',self.history),('Add route version…',lambda:create_route(self.w)),('Organise existing attempts…',lambda:organise(self.w))]:self.menu.addAction(title,callback)
         count=sum(len(identity.unanswered(d)) for d in self.w.workspace.documents())
-        self.pending.setText(f'{count} clip methods needed');self.pending.setVisible(count>0)
+        self.pending.setText(f'{count} clip answer{"s" if count!=1 else ""} needed');self.pending.setVisible(count>0)
     def changed(self):
         self.w.workspace.session_id=self.sessions.currentData() or ''
         if persist(self.w):self.w.refresh_collection();self.w.library.activate()

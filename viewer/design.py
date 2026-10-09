@@ -4,20 +4,42 @@ Layout rules: show the current step and hide the rest; one primary action per sc
 with activity colour reinforcing text labels (clip blue, rest green, chalk purple, points
 amber, climb end red); every fact drawn once.
 """
-from PySide6.QtCore import Qt,QRect
-from PySide6.QtGui import QColor,QPainter,QAction,QKeySequence
+import tempfile
+from pathlib import Path
+from PySide6.QtCore import Qt,QRect,QByteArray
+from PySide6.QtGui import QColor,QPainter,QAction,QKeySequence,QIcon,QPixmap
 from PySide6.QtWidgets import (QApplication,QWidget,QVBoxLayout,QHBoxLayout,QGridLayout,QLabel,QPushButton,QFrame,QTabWidget,QSplitter,QScrollArea,QHeaderView,
     QAbstractItemView,QLineEdit,QComboBox,QTableWidget,QSpinBox,QMessageBox,QMenu,QDialog,QFormLayout,QCheckBox,QDialogButtonBox,QStyledItemDelegate,QStyle,QSizePolicy)
-from .controls import Button as QPushButton,ElidedLabel,ReviewTabs
+from .controls import Button as QPushButton,ElidedLabel,ReviewTabs,Banner
 from .version import APP_NAME,__version__
 from .platform_runtime import GPU_LABEL,timecode_font
 
-TOKENS={False:dict(ink='#20252b',muted='#59616b',background='#f4f5f6',panel='#ffffff',line='#7b8591',soft='#e5e7eb',hover='#edf0f3',selected='#e8f0fe',action='#245fc4',accent='#245fc4',onaccent='#ffffff'),
-        True:dict(ink='#f3f4f5',muted='#b2b8bf',background='#151719',panel='#202326',line='#858f9a',soft='#383e45',hover='#2c3137',selected='#293d58',action='#245fc4',accent='#93bcff',onaccent='#ffffff')}
+TOKENS={False:dict(ink='#1c2026',muted='#5b6470',background='#eeeff2',panel='#ffffff',line='#aeb6c0',soft='#e1e4e8',hover='#f1f3f5',selected='#e4edfb',action='#245fc4',accent='#245fc4',onaccent='#ffffff',warn='#b45309',good='#15803d'),
+        True:dict(ink='#eef0f3',muted='#a2aab4',background='#111315',panel='#1b1e22',line='#4a525c',soft='#2a2f35',hover='#252a30',selected='#263a56',action='#2f6fd8',accent='#8fb6ff',onaccent='#ffffff',warn='#f0a24a',good='#5ad39b')}
+ICON_DIR=Path(__file__).resolve().parent/'assets'/'icons'
+_icons={}
+def icon(name,color):
+    """A 16 px line icon tinted for the current theme, with a 2× pixmap for high-density screens."""
+    key=(name,color)
+    if key not in _icons:
+        from PySide6.QtSvg import QSvgRenderer
+        renderer=QSvgRenderer(QByteArray((ICON_DIR/f'{name}.svg').read_text().replace('currentColor',color).encode()));result=QIcon()
+        for scale in (1,2):
+            pixmap=QPixmap(16*scale,16*scale);pixmap.fill(Qt.GlobalColor.transparent);p=QPainter(pixmap);renderer.render(p);p.end();pixmap.setDevicePixelRatio(scale);result.addPixmap(pixmap)
+        _icons[key]=result
+    return _icons[key]
+def icon_url(name,color):
+    """A tinted copy on disk for stylesheet image: rules (combo and spin arrows, checkbox ticks)."""
+    folder=Path(tempfile.gettempdir())/'climb-studio-icons';folder.mkdir(exist_ok=True);target=folder/f'{name}-{color.lstrip("#")}.svg'
+    if not target.exists():target.write_text((ICON_DIR/f'{name}.svg').read_text().replace('currentColor',color))
+    return target.as_posix()
 STYLE='''
 QWidget { font-size: 13px; color: $ink; }
 QMainWindow, QWidget#workspace { background: $background; }
-QFrame#card, QWidget#page { background: $panel; border-radius: 8px; }
+QFrame#card, QWidget#page { background: $panel; border: 1px solid $soft; border-radius: 8px; }
+QLabel#hero { font-size: 28px; font-weight: 600; }
+QPushButton[role="chip"] { color: $warn; font-weight: 600; padding: 2px 10px; border: 1px solid $warn; border-radius: 12px; font-size: 12px; background: transparent; }
+QPushButton[role="chip"]:hover { background: $hover; }
 QFrame#step { background: transparent; border: none; border-top: 1px solid $soft; border-radius: 0; }
 QLabel { background: transparent; border: none; }
 QLabel#brand { font-size: 20px; font-weight: 600; }
@@ -25,7 +47,8 @@ QLabel#muted,QLabel#eyebrow { color: $muted; font-size: 12px; }
 QLabel#section { font-size: 15px; font-weight: 600; }
 QLabel#timer { font-size: 15px; font-weight: 600; }
 QLabel#timecode { font-size: 19px; font-weight: 600; }
-QPushButton { background: $panel; border: 1px solid $line; border-radius: 6px; padding: 5px 10px; min-height: 20px; font-weight: 400; }
+QPushButton { background: $panel; border: 1px solid $line; border-radius: 6px; padding: 4px 10px; min-height: 22px; font-weight: 400; }
+QPushButton[icononly="true"] { padding: 4px 6px; }
 QPushButton:checked { background: $selected; border-color: transparent; font-weight: 600; }
 QPushButton:hover { background: $hover; }
 QPushButton:focus { border-color: $accent; }
@@ -33,19 +56,37 @@ QPushButton:pressed { background: $selected; }
 QPushButton[role="primary"] { background: $action; color: $onaccent; border-color: $action; font-weight: 600; }
 QPushButton[role="primary"]:hover { background: #1e50a5; }
 QPushButton[role="primary"]:pressed { background: #19458f; }
-QPushButton[role="quiet"] { background: transparent; border: 1px solid transparent; color: $muted; padding: 4px 6px; min-height: 22px; }
+QPushButton[role="quiet"] { background: transparent; border: 1px solid transparent; color: $ink; padding: 4px 8px; min-height: 22px; }
 QPushButton[role="quiet"]:focus { border-color: $accent; }
-QPushButton[role="quiet"]:hover { color: $ink; background: $hover; }
+QPushButton[role="quiet"]:hover { background: $hover; }
+QPushButton[role="quiet"]:disabled { background: transparent; border-color: transparent; }
 QPushButton[kind] { min-height: 30px; text-align: left; }
 QPushButton[role="start"] { background: $background; border-color: transparent; }
 QPushButton[role="choice"] { background: $background; border-color: transparent; text-align: left; }
 QPushButton[role="choice"]:checked { background: $selected; }
-QPushButton[keycap="true"] { padding-right: 10px; }
+QPushButton[keycap="true"] { text-align: left; padding-right: 46px; }
 QPushButton:disabled { background: $background; color: $muted; border-color: $soft; }
 QPushButton::menu-indicator { width: 0; }
-QLineEdit,QSpinBox,QDoubleSpinBox,QComboBox,QPlainTextEdit { background: $panel; border: 1px solid $line; border-radius: 5px; padding: 6px; selection-background-color: $accent; selection-color: white; }
-QLineEdit:focus,QSpinBox:focus,QComboBox:focus,QPlainTextEdit:focus { border-color: $accent; }
-QComboBox QAbstractItemView { background: $panel; selection-background-color: $selected; selection-color: $ink; }
+QLineEdit,QSpinBox,QDoubleSpinBox,QComboBox,QPlainTextEdit,QDateEdit { background: $panel; border: 1px solid $line; border-radius: 6px; padding: 5px 8px; min-height: 20px; selection-background-color: $accent; selection-color: white; }
+QLineEdit:focus,QSpinBox:focus,QDoubleSpinBox:focus,QComboBox:focus,QPlainTextEdit:focus,QDateEdit:focus { border-color: $accent; }
+QComboBox,QDateEdit { padding-right: 26px; }
+QComboBox::drop-down,QDateEdit::drop-down { subcontrol-origin: padding; subcontrol-position: center right; width: 22px; border: none; background: transparent; }
+QComboBox::down-arrow,QDateEdit::down-arrow { image: url($chevron_down); width: 12px; height: 12px; }
+QComboBox:on { border-color: $accent; }
+QComboBox QAbstractItemView { background: $panel; border: 1px solid $line; selection-background-color: $selected; selection-color: $ink; outline: 0; }
+QSpinBox,QDoubleSpinBox { padding-right: 22px; }
+QSpinBox::up-button,QDoubleSpinBox::up-button,QSpinBox::down-button,QDoubleSpinBox::down-button { subcontrol-origin: border; width: 18px; border: none; background: transparent; }
+QSpinBox::up-button,QDoubleSpinBox::up-button { subcontrol-position: top right; margin-top: 2px; }
+QSpinBox::down-button,QDoubleSpinBox::down-button { subcontrol-position: bottom right; margin-bottom: 2px; }
+QSpinBox::up-arrow,QDoubleSpinBox::up-arrow { image: url($chevron_up); width: 10px; height: 10px; }
+QSpinBox::down-arrow,QDoubleSpinBox::down-arrow { image: url($chevron_down); width: 10px; height: 10px; }
+QCheckBox::indicator,QRadioButton::indicator { width: 16px; height: 16px; border: 1px solid $line; background: $panel; }
+QCheckBox::indicator { border-radius: 4px; }
+QRadioButton::indicator { border-radius: 8px; }
+QCheckBox::indicator:hover,QRadioButton::indicator:hover { border-color: $accent; }
+QCheckBox::indicator:checked { background: $action; border-color: $action; image: url($check_white); }
+QRadioButton::indicator:checked { background: $panel; border: 5px solid $action; }
+QCheckBox:focus,QRadioButton:focus { outline: none; color: $accent; }
 QTabWidget::pane { border: none; background: $panel; border-radius: 8px; }
 QTabBar::tab { background: transparent; color: $muted; padding: 9px 16px; border-top: 2px solid transparent; border-bottom: 2px solid transparent; font-weight: 500; }
 QTabBar::tab:selected { color: $ink; border-bottom: 2px solid $accent; }
@@ -73,7 +114,8 @@ QProgressBar::chunk { background: $accent; }
 QToolTip { color: $ink; background: $panel; border: 1px solid $line; padding: 8px; }
 QMenu { color: $ink; background: $panel; border: 1px solid $line; }
 QMenu::item:selected { background: $selected; }
-QFrame#banner { background: $selected; border: 1px solid $line; border-radius: 6px; }
+QFrame#banner { background: $selected; border: 1px solid $soft; border-radius: 6px; }
+QLabel#saveState { color: $muted; }
 QFrame#drop { background: $panel; border: 1px solid $soft; border-radius: 8px; }
 QFrame#drop QLabel#dropTitle { font-size: 22px; font-weight: 600; }
 QFrame#loading { background: #101214; border-radius: 8px; }
@@ -126,6 +168,23 @@ def button(text,callback,role=None):
     if role:w.setProperty('role',role)
     return w
 
+ICON_BUTTONS=[]
+def icon_button(name,callback,role=None,tip='',text=''):
+    """A button drawn with a theme-tinted line icon; apply_theme retints it."""
+    w=QPushButton(text)
+    if callback:w.clicked.connect(callback)
+    if role:w.setProperty('role',role)
+    if not text:w.setProperty('icononly',True);w.setFixedWidth(30)
+    if tip:w.setToolTip(tip);w.setAccessibleName(tip.split('.')[0].split(' (')[0])
+    w.setProperty('iconName',name);ICON_BUTTONS.append(w);return w
+
+def retint(w,dark):
+    tokens=TOKENS[dark]
+    for b in list(ICON_BUTTONS):
+        try:name=b.property('iconName')
+        except RuntimeError:ICON_BUTTONS.remove(b);continue
+        b.setIcon(icon(name,tokens['onaccent'] if b.property('role') in ('primary','stop') else tokens['ink']))
+
 class KeyButton(QPushButton):
     """A button that shows its keyboard shortcut as a small keycap on the right."""
     def __init__(self,text,key,callback=None,role=None):
@@ -135,7 +194,7 @@ class KeyButton(QPushButton):
         self.setToolTip(f'{text} · key {key}')
     def paintEvent(self,event):
         super().paintEvent(event)
-        if self.fontMetrics().horizontalAdvance(max(self.text().splitlines(),key=len,default=''))+48>self.width():return
+        if self.fontMetrics().horizontalAdvance(max(self.text().splitlines(),key=len,default=''))+48+(24 if not self.icon().isNull() else 0)>self.width():return
         p=QPainter(self);p.setRenderHint(QPainter.RenderHint.Antialiasing);font=p.font();font.setPointSizeF(max(8.,font.pointSizeF()-2));font.setBold(False);p.setFont(font)
         width=max(18,p.fontMetrics().horizontalAdvance(self.key)+10);rect=QRect(self.width()-width-9,(self.height()-18)//2,width,18)
         colour=self.palette().buttonText().color() if self.isEnabled() else self.palette().color(self.palette().ColorGroup.Disabled,self.palette().ColorRole.ButtonText)
@@ -160,8 +219,8 @@ def step_card(name):
     if name:box.addWidget(label({'ATHLETE · START · END':'Athlete and climb','DURING THE CLIMB':'Hands and points'}.get(name,name),'section',wrap=False))
     return frame,box
 
-def menu_button(text,items,tip):
-    b=QPushButton(text);b.setProperty('role','quiet');b.setToolTip(tip);menu=QMenu(b)
+def menu_button(text,items,tip,icon_name=None):
+    b=icon_button(icon_name,None,'quiet',tip,text) if icon_name else QPushButton(text);b.setProperty('role','quiet');b.setToolTip(tip);menu=QMenu(b)
     for title,callback in items:
         if title is None:menu.addSeparator()
         else:menu.addAction(title,callback)
@@ -221,29 +280,28 @@ def build(w):
     about=QAction(f'About {APP_NAME}',w);about.setMenuRole(QAction.MenuRole.AboutRole);about.triggered.connect(w.show_about);menu.addAction(about)
     # Header: project, video, save state, export.
     top=QHBoxLayout();top.setSpacing(8)
-    w.project_button=button('Project',w.show_home,'quiet');w.project_button.setMinimumWidth(110);w.project_button.setMaximumWidth(220);w.project_button.setProperty('elide',True);w.project_button.setSizePolicy(QSizePolicy.Policy.Ignored,QSizePolicy.Policy.Fixed);w.project_button.setToolTip('Current project · click for Home: switch projects, start a session or event');top.addWidget(w.project_button)
+    w.project_button=icon_button('folder',w.show_home,'quiet','Home · switch projects, start a session or event','Project');w.project_button.setMinimumWidth(110);w.project_button.setMaximumWidth(220);w.project_button.setProperty('elide',True);w.project_button.setSizePolicy(QSizePolicy.Policy.Maximum,QSizePolicy.Policy.Fixed);w.project_button.setToolTip('Current project · click for Home: switch projects, start a session or event');top.addWidget(w.project_button)
     w.collection_bar=QWidget();queue=QHBoxLayout(w.collection_bar);queue.setContentsMargins(0,0,0,0);queue.setSpacing(8)
     w.video_selector=QComboBox();w.video_selector.setMinimumWidth(100);w.video_selector.setSizePolicy(QSizePolicy.Policy.Ignored,QSizePolicy.Policy.Fixed);w.video_selector.setPlaceholderText('No videos yet: drop them into the window');w.video_selector.setToolTip('Videos in this project · Ctrl+[ / Ctrl+] for previous / next')
     w.video_selector.currentIndexChanged.connect(w.select_video);w.video_selector.hide()
     w.current_video_label=label('Choose a project video','currentVideo',wrap=False);w.current_video_label.setMinimumWidth(100);w.current_video_label.setSizePolicy(QSizePolicy.Policy.Ignored,QSizePolicy.Policy.Fixed);queue.addWidget(w.current_video_label,1)
     w.video_count=label('','muted',wrap=False);queue.addWidget(w.video_count)
-    w.add_button=button('+ Add videos',w.open_video);w.add_button.setToolTip('Add video files to this project, or drop them anywhere in the window. The last folder used is remembered.');queue.addWidget(w.add_button)
-    top.addStretch();w.collection_bar.hide();top.addWidget(w.add_button)
+    w.add_button=icon_button('plus',w.open_video,None,'Add video files to this project, or drop them anywhere in the window.','Add videos');w.add_button.setToolTip('Add video files to this project, or drop them anywhere in the window. The last folder used is remembered.');queue.addWidget(w.add_button)
+    from .context_ui import SessionBar,AttemptNavigation,ClipReview
+    w.session_bar=SessionBar(w);top.addWidget(w.session_bar);top.addStretch();w.collection_bar.hide();top.addWidget(w.add_button)
     w.save_state=label('','saveState',wrap=False);w.save_state.setToolTip('Measurements save automatically to the project’s labels folder.');top.addWidget(w.save_state)
     w.export_button=QPushButton('Export ▾');w.export_button.setToolTip('Export the selected route and attempts from Compare; detailed measurements are included');export_menu=QMenu(w.export_button)
     for text,cb in export_items:
         if text:export_menu.addAction(text,cb)
         else:export_menu.addSeparator()
     w.export_button.setMenu(export_menu);top.addWidget(w.export_button);outer.addLayout(top)
-    from .context_ui import SessionBar,AttemptNavigation,ClipReview
-    w.session_bar=SessionBar(w);outer.addWidget(w.session_bar)
-    # Shown only when a newer release exists.
-    w.update_banner=QFrame();w.update_banner.setObjectName('banner');banner=QHBoxLayout(w.update_banner);banner.setContentsMargins(12,6,8,6)
+    # Shown only when a newer release exists; slides open instead of snapping the layout.
+    w.update_banner=Banner();banner=QHBoxLayout(w.update_banner);banner.setContentsMargins(12,6,8,6)
     w.update_text=QLabel();w.update_text.setWordWrap(True);banner.addWidget(w.update_text,1);w.update_buttons={}
     for key,text,role in [('install','Update now','primary'),('notes',"What's new",None),('skip','Skip this version','quiet'),('later','Later','quiet')]:
         b=button(text,lambda checked=False,k=key:w.update_action(k),role);banner.addWidget(b);w.update_buttons[key]=b
     w.update_banner.hide();outer.addWidget(w.update_banner)
-    w.save_banner=QFrame();w.save_banner.setObjectName('banner');failure=QHBoxLayout(w.save_banner);w.save_detail=label('');failure.addWidget(w.save_detail,1)
+    w.save_banner=Banner();failure=QHBoxLayout(w.save_banner);w.save_detail=label('');failure.addWidget(w.save_detail,1)
     for text,cb in [('Retry',w.autosave),('Save copy…',w.save_copy),('Show folder',w.show_save_folder)]:failure.addWidget(button(text,cb))
     w.save_banner.hide();outer.addWidget(w.save_banner)
     # Three places: measure one climb, compare climbs, manage the videos.
@@ -271,9 +329,9 @@ def build(w):
     w.precision_scrubber=PrecisionScrubber();w.precision_scrubber.seek.connect(w.scrub_seconds);w.precision_scrubber.released.connect(w.finish_scrub);w.precision_scrubber.observationSelected.connect(w.select_timeline_event);v.addWidget(w.precision_scrubber)
     w.slider.hide()
     w.transport=QWidget();transport_rows=QVBoxLayout(w.transport);transport_rows.setContentsMargins(0,0,0,0);transport_rows.setSpacing(4);controls=QHBoxLayout();controls.setSpacing(4);transport_rows.addLayout(controls)
-    w.play_button.hide();w.play_button=button('Play · Space',w.toggle_play,'primary');w.play_button.setParent(w.transport);w.play_button.setProperty('role','primary');w.play_button.setMinimumWidth(80);controls.addWidget(w.play_button)
-    w.step_back_button=button('◀',lambda:w.step(-1),'quiet');w.step_forward_button=button('▶',lambda:w.step(1),'quiet')
-    for b in (w.step_back_button,w.step_forward_button):b.setFixedWidth(40);controls.addWidget(b)
+    w.play_button.hide();w.play_button=KeyButton('Play','Space',w.toggle_play,'primary');w.play_button.setProperty('iconName','play');ICON_BUTTONS.append(w.play_button);w.play_button.setParent(w.transport);w.play_button.setMinimumWidth(124);controls.addWidget(w.play_button)
+    w.step_back_button=icon_button('step-back',lambda:w.step(-1),'quiet','Step back (←)');w.step_forward_button=icon_button('step-forward',lambda:w.step(1),'quiet','Step forward (→)')
+    for b in (w.step_back_button,w.step_forward_button):controls.addWidget(b)
     w.speed.setParent(w.transport);w.speed.setToolTip('Playback speed');controls.addWidget(w.speed);controls.addStretch()
     w.position.setParent(w.transport);w.position.setObjectName('timecode');w.position.setWordWrap(False);w.position.setTextFormat(Qt.TextFormat.RichText);w.position.setToolTip('Playhead: minutes:seconds.milliseconds and the frame number in the original video.\n\n'+LOADING_HELP)
     font=timecode_font();font.setPointSizeF(14);w.position.setFont(font);controls.addWidget(w.position)
@@ -296,7 +354,7 @@ def build(w):
     preview_help=label('Creates a local frame cache for smoother seeking. The original video is unchanged.','muted');preview_help.setMaximumWidth(260);option_box.addWidget(preview_help)
     w.inspector_button=button('Hide controls',w.toggle_inspector,'quiet');option_box.addWidget(w.inspector_button)
     action=QWidgetAction(options.menu());action.setDefaultWidget(option_panel);options.menu().addAction(action)
-    controls.addWidget(button('Fit',w.image.fit,'quiet'));controls.addWidget(options);v.addWidget(w.transport)
+    controls.addWidget(icon_button('fit',w.image.fit,'quiet','Fit the video to the window'));controls.addWidget(options);v.addWidget(w.transport)
     w.active_timers=label('','timer');w.active_timers.setWordWrap(True);v.addWidget(w.active_timers)
     split.addWidget(video)
     w.set_frame_step(w.frame_step.value())
@@ -307,13 +365,13 @@ def build(w):
     w.empty_panel=label('Load a video to start measuring.\n\nThe panel then follows the climb: name the athlete, mark the start, time each hand’s clips, rests and chalking, mark the end.','muted');measure.addWidget(w.empty_panel)
     w.boundary_box,box=step_card('')
     line=QHBoxLayout();w.climber.setReadOnly(True);w.climber.hide();w.athlete_button=button('Assign athlete…',w.reassign_attempt,'quiet');w.athlete_button.setSizePolicy(QSizePolicy.Policy.Ignored,QSizePolicy.Policy.Fixed);w.athlete_button.setMinimumWidth(100);w.athlete_button.setProperty('elide',True);line.addWidget(w.athlete_button,1);line.addWidget(label('Attempt','muted',wrap=False));w.attempt.setMaximumWidth(55);line.addWidget(w.attempt)
-    line.addWidget(menu_button('⋯',[('New attempt',w.new_attempt),('Open another attempt…',w.choose_attempt),('Reassign athlete / session / route…',w.reassign_attempt),('Coaching goal and context…',w.edit_coaching),(None,None),('Clear this athlete…',w.clear_athlete),('Clear measurements…',w.clear_measurements)],'More actions for this attempt'));box.addLayout(line)
+    line.addWidget(menu_button('',[('New attempt',w.new_attempt),('Open another attempt…',w.choose_attempt),('Reassign athlete / session / route…',w.reassign_attempt),('Coaching goal and context…',w.edit_coaching),(None,None),('Clear this athlete…',w.clear_athlete),('Clear measurements…',w.clear_measurements)],'More actions for this attempt','more'));box.addLayout(line)
     w.attempt_context=ElidedLabel();w.attempt_context.setObjectName('muted');w.attempt_context.setSizePolicy(QSizePolicy.Policy.Ignored,QSizePolicy.Policy.Fixed);box.addWidget(w.attempt_context)
     line=QHBoxLayout();w.start_button=KeyButton('Mark climb start','S',lambda:w.edit_boundary('start'),'quiet');w.start_value=label('Not marked','muted',wrap=False);line.addWidget(w.start_value,1);w.start_button.setToolTip('Pause on the first grip, then mark the climb start (S). Press again to move it to the current frame.');w.start_button.setAccessibleName('Edit or mark climb start');line.addWidget(w.start_button)
-    w.start_clear=button('×',lambda:w.clear_boundary('start'),'quiet');w.start_clear.setToolTip('Remove the climb start');w.start_clear.setAccessibleName('Remove climb start');line.addWidget(w.start_clear);box.addLayout(line);line=QHBoxLayout()
+    w.start_clear=icon_button('close',lambda:w.clear_boundary('start'),'quiet');w.start_clear.setToolTip('Remove the climb start');w.start_clear.setAccessibleName('Remove climb start');line.addWidget(w.start_clear);box.addLayout(line);line=QHBoxLayout()
     w.end_button=KeyButton('Mark climb end','E',lambda:w.edit_boundary('end'),'quiet');w.end_value=label('Not marked','muted',wrap=False);line.addWidget(w.end_value,1);w.end_button.setToolTip('Pause on the fall (rope weighted) or the top, then mark the end (E).');w.end_button.setAccessibleName('Edit or mark climb end');line.addWidget(w.end_button)
-    w.end_edit=button('✎',w.edit_climb_outcome,'quiet');w.end_edit.setToolTip('Change the result: fell or topped');w.end_edit.setAccessibleName('Change climb result');line.addWidget(w.end_edit)
-    w.end_clear=button('×',lambda:w.clear_boundary('end'),'quiet');w.end_clear.setToolTip('Remove the climb end');w.end_clear.setAccessibleName('Remove climb end');line.addWidget(w.end_clear);box.addLayout(line)
+    w.end_edit=icon_button('edit',w.edit_climb_outcome,'quiet');w.end_edit.setToolTip('Change the result: fell or topped');w.end_edit.setAccessibleName('Change climb result');line.addWidget(w.end_edit)
+    w.end_clear=icon_button('close',lambda:w.clear_boundary('end'),'quiet');w.end_clear.setToolTip('Remove the climb end');w.end_clear.setAccessibleName('Remove climb end');line.addWidget(w.end_clear);box.addLayout(line)
     w.duration_status.setObjectName('timer');box.addWidget(w.duration_status)
     for hidden in (w.start_status,w.end_status):hidden.setParent(w.boundary_box);hidden.hide()
     measure.addWidget(w.boundary_box)
@@ -328,14 +386,14 @@ def build(w):
             cell=QWidget();line=QHBoxLayout(cell);line.setContentsMargins(0,0,0,0);line.setSpacing(2)
             control=KeyButton(kind.capitalize(),keys[kind][hand],lambda checked=False,k=kind,h=hand:w.toggle_hand_timer(k,h),'start');control.setProperty('kind',kind);control.setFixedHeight(48);control.setSizePolicy(QSizePolicy.Policy.Ignored,QSizePolicy.Policy.Fixed);control.setAccessibleName(hand.capitalize()+' hand '+kind)
             control.setToolTip(f'{hand.capitalize()} hand {kind}: press to start the timer at this frame, press again to stop it (key {keys[kind][hand]}).');line.addWidget(control,1)
-            cancel=button('×',lambda checked=False,k=kind,h=hand:w.cancel_hand_timer(k,h),'quiet');cancel.setToolTip('Discard this running timer');cancel.setAccessibleName('Discard '+hand+' '+kind+' timer');cancel.setFixedWidth(32);line.addWidget(cancel)
+            cancel=icon_button('close',lambda checked=False,k=kind,h=hand:w.cancel_hand_timer(k,h),'quiet');cancel.setToolTip('Discard this running timer');cancel.setAccessibleName('Discard '+hand+' '+kind+' timer');line.addWidget(cancel)
             w.hand_timer_buttons[kind,hand]=control;w.hand_timer_cancel[kind,hand]=cancel;grid.addWidget(cell,row,col)
     box.addWidget(w.hands_box)
     w.clip_review=ClipReview(w);w.review_tabs.addTab(w.clip_review,'Clips')
     w.point_box=QWidget();points=QVBoxLayout(w.point_box);points.setContentsMargins(0,4,0,0);points.setSpacing(6)
     line=QHBoxLayout();w.point_name.setToolTip('Point name. Starts as the point marked most recently; use the same names for every athlete.');line.addWidget(w.point_name,1)
     line.addWidget(KeyButton('Mark point','P',w.add_point))
-    line.addWidget(menu_button('⋯',[('Rename selected point…',w.rename_point),('Delete selected point',w.delete_point),(None,None),('Comment at current frame…',w.comment_at_frame),('Edit selected comment…',w.edit_point_comment)],'Rename, delete or comment points'))
+    line.addWidget(menu_button('',[('Rename selected point…',w.rename_point),('Delete selected point',w.delete_point),(None,None),('Comment at current frame…',w.comment_at_frame),('Edit selected comment…',w.edit_point_comment)],'Rename, delete or comment points','more'))
     points.addLayout(line);w.points_table.setMinimumHeight(0);w.points_table.setMaximumHeight(96);points.addWidget(w.points_table);w.review_tabs.addTab(w.point_box,'Points')
     w.legacy_rest_panel=QWidget();legacy=QHBoxLayout(w.legacy_rest_panel);legacy.setContentsMargins(0,0,0,0);legacy.addWidget(label('Earlier rest timer','muted'));legacy.addWidget(button('Stop',w.stop_legacy_rest));legacy.addWidget(button('Cancel',lambda:w.cancel_hand_timer('rest','none'),'quiet'));box.addWidget(w.legacy_rest_panel)
     measure.addWidget(w.climb_box)
@@ -367,7 +425,9 @@ def build(w):
     from .compare_scope import CompareScope
     w.compare_scope=CompareScope();w.compare_scope.changed.connect(w.refresh_comparison);cp.addWidget(w.compare_scope);cp.addWidget(w.compare_tabs)
     comparison=QWidget();comparison.setObjectName('page');outer=QVBoxLayout(comparison);outer.setContentsMargins(0,0,0,0);overview_scroll=QScrollArea();overview_scroll.setWidgetResizable(True);overview_body=QWidget();c=QVBoxLayout(overview_body);c.setContentsMargins(16,14,16,14);c.setSpacing(12);overview_scroll.setWidget(overview_body);outer.addWidget(overview_scroll);w.comparison_page=comparison
-    w.collection_summary=label('Mark a climb start and end in Video analysis to compare.','muted');c.addWidget(w.collection_summary)
+    from .controls import info_button
+    summary_row=QHBoxLayout();w.collection_summary=label('Mark a climb start and end in Video analysis to compare.','muted');summary_row.addWidget(w.collection_summary,1)
+    summary_row.addWidget(info_button('Recorded recovery is descriptive, not a score. Footwork counts apply only to checked footage. Hover a cell for exact values; double-click an attempt to open its video.'));c.addLayout(summary_row)
     w.comparison_table=QTableWidget();w.comparison_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers);w.comparison_table.setAlternatingRowColors(True);w.comparison_table.setShowGrid(False);w.comparison_table.verticalHeader().hide()
     w.comparison_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows);w.comparison_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection);w.comparison_table.setSortingEnabled(True)
     w.comparison_table.cellDoubleClicked.connect(w.comparison_open);w.comparison_table.itemSelectionChanged.connect(w.comparison_selected);w.comparison_table.setToolTip('Click a column to sort. Select an athlete for details; double-click to open their video.')
@@ -406,8 +466,9 @@ def apply_theme(w,theme):
     app=QApplication.instance();dark=theme=='dark' or (theme=='system' and app.styleHints().colorScheme()==Qt.ColorScheme.Dark)
     tokens=dict(TOKENS[dark])
     if w.settings.value('high_contrast',False,type=bool):tokens.update(muted=tokens['ink'],line=tokens['ink'])
-    style=STYLE
+    style=STYLE.replace('$chevron_down',icon_url('chevron-down',tokens['muted'])).replace('$chevron_up',icon_url('chevron-up',tokens['muted'])).replace('$check_white',icon_url('check','#ffffff'))
     for key,color in tokens.items():style=style.replace('$'+key,color)
+    retint(w,dark)
     palette=QPalette()
     for role,color in [(QPalette.ColorRole.Window,tokens['background']),(QPalette.ColorRole.Base,tokens['panel']),(QPalette.ColorRole.AlternateBase,tokens['background']),(QPalette.ColorRole.Button,tokens['panel']),(QPalette.ColorRole.WindowText,tokens['ink']),(QPalette.ColorRole.Text,tokens['ink']),(QPalette.ColorRole.ButtonText,tokens['ink']),(QPalette.ColorRole.Highlight,tokens['accent']),(QPalette.ColorRole.HighlightedText,'white')]:palette.setColor(role,QColor(color))
     app.setPalette(palette);w.setStyleSheet(style+'\n'+extra_style(dark));w.theme='dark' if dark else 'light';w.appearance=theme;w.theme_button.setText('Light mode' if dark else 'Dark mode')

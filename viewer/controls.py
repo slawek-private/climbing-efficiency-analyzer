@@ -1,7 +1,7 @@
 """A stable keyboard focus ring for the shared desktop button roles."""
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QPoint
 from PySide6.QtGui import QPainter, QPen
-from PySide6.QtWidgets import QPushButton as NativeButton, QLabel, QStyleOptionButton, QStylePainter, QStyle, QTabWidget, QScrollArea
+from PySide6.QtWidgets import QPushButton as NativeButton, QLabel, QStyleOptionButton, QStylePainter, QStyle, QTabWidget, QScrollArea, QFrame, QToolTip
 
 
 KEYBOARD_REASONS = (Qt.FocusReason.TabFocusReason, Qt.FocusReason.BacktabFocusReason, Qt.FocusReason.ShortcutFocusReason)
@@ -31,6 +31,25 @@ class Button(NativeButton):
                 colour = self.palette().highlightedText().color()
             painter.setPen(QPen(colour, 2))
             painter.drawRoundedRect(self.rect().adjusted(3, 3, -3, -3), 4, 4)
+
+
+class Banner(QFrame):
+    """A message strip that slides open instead of snapping the layout."""
+    def __init__(self):
+        super().__init__();self.setObjectName('banner');self.animation=None
+    def setVisible(self, visible):
+        if visible and not self.isVisible():
+            super().setVisible(True);target=self.sizeHint().height();self.setMaximumHeight(0)
+            self.animation=QPropertyAnimation(self,b'maximumHeight',self);self.animation.setDuration(180);self.animation.setStartValue(0);self.animation.setEndValue(target)
+            self.animation.setEasingCurve(QEasingCurve.Type.OutCubic);self.animation.finished.connect(lambda:self.setMaximumHeight(16777215));self.animation.start()
+        else:super().setVisible(visible)
+
+
+def info_button(text):
+    """An info icon whose hover and click show one explanatory paragraph, instead of a paragraph on the page."""
+    from .design import icon_button
+    b=icon_button('info',None,'quiet',text);b.setFixedSize(26,26);b.setAccessibleName('About this view');b.setAccessibleDescription(text)
+    b.clicked.connect(lambda:QToolTip.showText(b.mapToGlobal(QPoint(0,b.height())),text,b));return b
 
 
 class ElidedLabel(QLabel):

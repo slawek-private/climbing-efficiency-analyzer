@@ -148,7 +148,7 @@ class Window(QMainWindow):
         layout.addLayout(toolbar);layout.addWidget(self.progress)
         splitter=QSplitter(Qt.Orientation.Horizontal);layout.addWidget(splitter,1)
         player=QWidget();player_layout=QVBoxLayout(player);self.image=ImageView();player_layout.addWidget(self.image,1)
-        controls=QHBoxLayout();self.play_button=QPushButton("Play · Space");self.play_button.clicked.connect(self.toggle_play);controls.addWidget(self.play_button)
+        controls=QHBoxLayout();self.play_button=QPushButton("Play");self.play_button.clicked.connect(self.toggle_play);controls.addWidget(self.play_button)
         for text,delta in (("◀ Frame · ←",-1),("Frame ▶ · →",1)):
             button=QPushButton(text);button.clicked.connect(lambda checked=False,d=delta:self.step(d));controls.addWidget(button)
         self.speed=QComboBox();self.speed.addItems(["0.25×","0.5×","1×","1.5×","2×"]);self.speed.setCurrentIndex(2);self.speed.currentIndexChanged.connect(self.reset_clock);controls.addWidget(self.speed)
@@ -269,8 +269,8 @@ class Window(QMainWindow):
     def toggle_play(self):
         if not self.reader:return
         if self.playing:self.pause()
-        else:self.playing=True;self.reset_clock();self.timer.start();self.play_button.setText("Pause · Space")
-    def pause(self):self.playing=False;self.timer.stop();self.play_button.setText("Play · Space")
+        else:self.playing=True;self.reset_clock();self.timer.start();self.play_button.setText("Pause")
+    def pause(self):self.playing=False;self.timer.stop();self.play_button.setText("Play")
     def tick(self):
         if not self.reader:return
         rate=(.25,.5,1,1.5,2)[self.speed.currentIndex()];seconds=self.play_start+self.elapsed.elapsed()/1000*rate

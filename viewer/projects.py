@@ -167,7 +167,8 @@ class ProjectBrowser(QDialog):
         for text, callback, role in [('Open', self.open, 'primary'), ('New…', self.new, None), ('Import…', self.import_file, None)]:
             b = QPushButton(text);b.clicked.connect(callback);line.addWidget(b)
             if role:b.setProperty('role', role)
-        more = QPushButton('⋯');more.setToolTip('Rename, export, show the folder of, or delete the selected project');menu = QMenu(more)
+        from .design import icon_button
+        more = icon_button('more',None,None,'More');more.setToolTip('Rename, export, show the folder of, or delete the selected project');menu = QMenu(more)
         for text, callback in [('Rename…', self.rename), ('Export as a file…', self.export), ('Show folder', self.reveal), (None, None), ('Delete…', self.delete)]:
             if text:menu.addAction(text, callback)
             else:menu.addSeparator()

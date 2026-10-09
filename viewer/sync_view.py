@@ -128,7 +128,7 @@ class SyncView(QWidget):
         self.full = QPushButton('Full screen');self.full.setProperty('role','quiet');self.full.setToolTip('Use the whole screen for the videos (Esc or click again to leave).');self.full.clicked.connect(self.toggle_full_screen);top.addWidget(self.full);layout.addLayout(top)
         self.area = TileArea();layout.addWidget(self.area, 1)
         controls = QHBoxLayout();controls.setSpacing(4)
-        self.play_button = QPushButton('Play · Space');self.play_button.setProperty('role', 'primary');self.play_button.clicked.connect(self.toggle_play);controls.addWidget(self.play_button)
+        self.play_button = QPushButton('Play');self.play_button.setProperty('role', 'primary');self.play_button.clicked.connect(self.toggle_play);controls.addWidget(self.play_button)
         for text, seconds, frames in (('← 1 s', -1., 0), ('← frame', 0, -1), ('frame →', 0, 1), ('1 s →', 1., 0)):
             b = QPushButton(text);b.setProperty('role','quiet');b.clicked.connect(lambda checked=False, s=seconds, f=frames:self.step(s) if s else self.step_frames(f));controls.addWidget(b)
         self.speed = QComboBox();self.speed.addItems([f'{s:g}×' for s in SPEEDS]);self.speed.setCurrentIndex(2);self.speed.currentIndexChanged.connect(self.restart_clock);controls.addWidget(self.speed)
@@ -216,9 +216,9 @@ class SyncView(QWidget):
         if self.playing:return self.pause()
         if not self.tiles:return
         if self.t >= self.hi:self.seek(self.lo)
-        self.playing = True;self.restart_clock();self.play_button.setText('Pause · Space')
+        self.playing = True;self.restart_clock();self.play_button.setText('Pause')
     def pause(self):
-        self.playing = False;self.play_button.setText('Play · Space')
+        self.playing = False;self.play_button.setText('Play')
     def tick(self):
         if self.playing:
             t = self.play_from+self.clock.elapsed()/1000*SPEEDS[self.speed.currentIndex()]

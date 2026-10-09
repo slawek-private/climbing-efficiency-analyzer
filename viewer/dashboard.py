@@ -42,11 +42,12 @@ def fill(t,headers,data):
 
 class Dashboard(QWidget):
     def __init__(self):
-        super().__init__();self.documents=[];layout=QVBoxLayout(self);layout.setContentsMargins(20,16,20,16);title=QLabel('Hand patterns');title.setObjectName('section');layout.addWidget(title)
+        from .controls import info_button
+        super().__init__();self.documents=[];layout=QVBoxLayout(self);layout.setContentsMargins(20,16,20,16);head=QHBoxLayout();title=QLabel('Hand patterns');title.setObjectName('section');head.addWidget(title)
+        head.addWidget(info_button('Observed hand choices, not a score: route geometry and stance affect clipping hand. More alternation or less rest is not automatically better. Missing chalking is unknown, not zero.'));head.addStretch();layout.addLayout(head)
         line=QHBoxLayout();line.addWidget(QLabel('Compare'));self.first=QComboBox();self.second=QComboBox();line.addWidget(self.first);line.addWidget(self.second);line.addStretch();layout.addLayout(line);self.first.hide();self.second.hide()
         for i in range(line.count()):
             if line.itemAt(i).widget():line.itemAt(i).widget().hide()
-        note=QLabel('Observed hand choices, not a score: route geometry and stance affect clipping hand. More alternation or less rest is not automatically better. Missing chalking is unknown, not zero.');note.setWordWrap(True);note.setObjectName('muted');layout.addWidget(note)
         self.tabs=QTabWidget();layout.addWidget(self.tabs,1);self.hands=table();self.recovery=table();self.clips=table();self.point_table=table()
         self.tabs.addTab(self.hands,'Clipping hands');self.tabs.addTab(self.recovery,'Rest && chalk')
         from .charts import DetailPlots
