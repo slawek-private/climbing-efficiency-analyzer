@@ -12,7 +12,7 @@ from . import identity,projects
 INTENTS=[('training','Training session','One route, many attempts. Track progress per athlete.'),
          ('competition','Competition event','One round, many athletes. Compare the field.'),
          ('video','Open a video','Measure one climb now, organise later.'),
-         ('project','Open project','Browse, create or import a .climbproject.')]
+         ('import','Import project','Open a .climbproject file from another computer.')]
 
 
 def label(text,name=None,wrap=True):
@@ -187,6 +187,7 @@ class HomePage(QWidget):
         else:self.refresh()
     def start(self,kind):
         if kind=='project':return self.browse()
+        if kind=='import':return self.browse('import')
         if kind=='video':
             self.w.show_workspace();self.w.open_video();return
         wizard=NewSessionWizard(self.w,kind)

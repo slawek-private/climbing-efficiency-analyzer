@@ -245,17 +245,20 @@ def menu_button(text,items,tip,icon_name=None):
 class SettingsDialog(QDialog):
     """Rarely changed technical settings, moved out of the workspace."""
     def __init__(self,w):
-        super().__init__(w);self.setWindowTitle('Settings');form=QFormLayout(self)
+        super().__init__(w);self.setWindowTitle('Settings');self.setMinimumWidth(460);outer=QVBoxLayout(self);outer.setSpacing(6)
+        def group(title):
+            outer.addWidget(label(title,'section',wrap=False));form=QFormLayout();form.setContentsMargins(0,0,0,10);form.setHorizontalSpacing(16);outer.addLayout(form);return form
+        form=group('Playback')
         w.decoder_choice=QComboBox();w.decoder_choice.addItems(['CPU · low latency',GPU_LABEL,'Prepared preview · fast seek']);w.decoder_choice.currentIndexChanged.connect(w.change_decoder)
         w.decoder_choice.setToolTip('Automatic by default: the GPU decoder where the file allows it, the smooth preview whenever one exists.')
         form.addRow('Video decoder',w.decoder_choice)
         w.frame_step=QSpinBox();w.frame_step.setRange(1,120);w.frame_step.setValue(int(w.settings.value("frame_step",5)));w.frame_step.setSuffix(' frames');w.frame_step.valueChanged.connect(w.set_frame_step)
         w.frame_step.setToolTip('Frames moved by ← / → and the step buttons. Shift+← / → always moves one frame.');form.addRow('Step size',w.frame_step)
-        w.startup_choice=QComboBox();w.startup_choice.addItem('Home','home');w.startup_choice.addItem('Last project',"last");w.startup_choice.setCurrentIndex(max(0,w.startup_choice.findData(w.settings.value('startup','home'))))
+        form=group('Startup');w.startup_choice=QComboBox();w.startup_choice.addItem('Home','home');w.startup_choice.addItem('Last project',"last");w.startup_choice.setCurrentIndex(max(0,w.startup_choice.findData(w.settings.value('startup','home'))))
         w.startup_choice.currentIndexChanged.connect(lambda i:w.settings.setValue('startup',w.startup_choice.itemData(i)));form.addRow('At startup',w.startup_choice)
         updates=QCheckBox('Check for updates automatically');updates.setChecked(w.settings.value('auto_update',True,type=bool));updates.toggled.connect(lambda on:(w.settings.setValue('auto_update',on),w.auto_update_action.setChecked(on)))
-        form.addRow('',updates);storage=button('Storage…',w.show_storage);form.addRow('Cache',storage)
-        close=QDialogButtonBox(QDialogButtonBox.StandardButton.Close);close.rejected.connect(self.reject);form.addRow(close)
+        form.addRow('',updates);form=group('Storage');storage=button('Previews and frame indexes…',w.show_storage);storage.setToolTip('See and limit disk space used by smooth previews and frame indexes.');form.addRow('',storage)
+        close=QDialogButtonBox(QDialogButtonBox.StandardButton.Close);close.rejected.connect(self.reject);outer.addWidget(close)
 
 def build(w):
     from .platform_runtime import interface_font
