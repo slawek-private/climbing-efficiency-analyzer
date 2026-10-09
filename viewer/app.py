@@ -21,9 +21,13 @@ class IndexWorker(QThread):
     ready=Signal(object)
     progress=Signal(int)
     error=Signal(str)
+    poster=Signal(object)
     def __init__(self,path):
         super().__init__();self.path=path
     def run(self):
+        from .home import poster_image
+        image=poster_image(self.path,960)
+        if image is not None and not self.isInterruptionRequested():self.poster.emit(image)
         try:self.ready.emit(index_video(self.path,self.progress.emit,self.isInterruptionRequested,cache_dir=ROOT/"artifacts"/"frame-indexes"))
         except Exception as error:self.error.emit(str(error))
 
@@ -230,8 +234,12 @@ class Window(QMainWindow):
         self.progress.setRange(0,0);self.progress.setFormat('Opening '+path.name+' · checking file identity');self.progress.show();self.worker=IndexWorker(path)
         def indexed_progress(value):
             self.progress.setRange(0,100 if value else 0);self.progress.setValue(value);self.progress.setFormat('Opening '+path.name+' · reading frame times'+(' · %p%' if value else ''))
-        self.worker.progress.connect(indexed_progress);self.worker.ready.connect(self.index_ready);self.worker.error.connect(self.index_error);self.worker.start()
-    def index_error(self,message):self.progress.hide();self.position.setText("Video could not be indexed");self.error(message)
+        self.worker.progress.connect(indexed_progress);self.worker.poster.connect(self.show_poster);self.worker.ready.connect(self.index_ready);self.worker.error.connect(self.index_error);self.worker.start()
+    def show_poster(self,image):pass
+    def index_error(self,message):
+        self.progress.hide();self.position.setText("Video could not be indexed")
+        if 'cancelled' in str(message).lower():return self.refresh_live() if hasattr(self,'refresh_live') else None
+        self.error(message)
     def index_ready(self,index):
         self.progress.hide()
         try:

@@ -26,7 +26,7 @@ def window(tmp_path,monkeypatch,assigned=True):
     return app,w
 
 def test_empty_state_then_loaded_video_and_autosave_without_dialog(tmp_path,monkeypatch):
-    app,w=window(tmp_path,monkeypatch)
+    app,w=window(tmp_path,monkeypatch);assert w.stack.currentWidget() is w.home;w.show_workspace()
     assert w.empty_hint.isVisible() and not w.image.isVisible() and not w.transport.isVisible() and not w.measurement_scroll.isVisible() and w.save_state.text()==''
     path=tmp_path/'anna.mkv';index=synthetic(path,40);w.video_path=path;w.index_ready(index);app.processEvents()
     assert not w.empty_hint.isVisible() and w.image.isVisible() and w.transport.isVisible() and w.boundary_box.isVisible() and not w.empty_panel.isVisible()
@@ -46,7 +46,7 @@ def test_drop_adds_videos_and_routes_project_files(tmp_path,monkeypatch):
     w.close()
 
 def test_leaderboard_gaps_sorting_and_detail(tmp_path,monkeypatch):
-    app,w=window(tmp_path,monkeypatch);index=synthetic(tmp_path/'v.mkv',80);times=[n/10 for n in range(80)]
+    app,w=window(tmp_path,monkeypatch);w.show_workspace();index=synthetic(tmp_path/'v.mkv',80);times=[n/10 for n in range(80)]
     def point(frame):return {'frame':frame,'pts':index['pts'][frame],'seconds':times[frame]}
     for name,arrival,outcome in (('Anna',30,'completed'),('Ben',20,'failed'),('Cleo',25,'failed')):
         path=tmp_path/f'{name}.mkv';path.write_bytes((tmp_path/'v.mkv').read_bytes())

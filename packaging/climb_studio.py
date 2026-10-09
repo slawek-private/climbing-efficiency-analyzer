@@ -9,5 +9,5 @@ args, _ = parser.parse_known_args()  # macOS may pass -psn_* arguments to app bu
 if args.self_check:
     from viewer.selfcheck import run
     sys.exit(run())
-from viewer.simple import main
+from viewer.launch import main
 sys.exit(main(args.video))

@@ -5,7 +5,7 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from uuid import uuid4
 from pathlib import Path
-from PySide6.QtCore import QTimer,QSettings
+from PySide6.QtCore import Qt,QTimer,QSettings
 from PySide6.QtGui import QShortcut,QKeySequence
 from PySide6.QtWidgets import QApplication,QWidget,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,QLineEdit,QGroupBox,QTableWidget,QTableWidgetItem,QFileDialog,QMessageBox,QInputDialog,QComboBox,QDialog,QDialogButtonBox,QCheckBox
 from .app import Window as LegacyWindow
@@ -107,6 +107,27 @@ class Window(LegacyWindow):
         points=self.workspace.shared_points();self.point_name.setText(self.settings.value('last_point','') or (points[-1] if points else 'A'))
         self.refresh_live();self.refresh_collection();self.refresh_preview_status();self.update_project_label()
         if not video and self.workspace.videos:self.show_view(self.library)
+        if video or (self.settings.value('startup','home')=='last' and self.workspace.videos):self.show_workspace()
+        else:self.show_home()
+    def show_home(self):
+        self.pause();self.home.refresh();self.stack.setCurrentWidget(self.home)
+    def show_workspace(self):
+        self.stack.setCurrentWidget(self.workspace_root)
+    def new_session(self,kind):
+        from .home import NewSessionWizard
+        wizard=NewSessionWizard(self,kind,allow_project=False)
+        if wizard.exec()==QDialog.DialogCode.Accepted:self.show_workspace();self.open_video()
+    def cancel_opening(self):
+        if self.worker and self.worker.isRunning():self.worker.requestInterruption()
+    def show_poster(self,image):
+        from PySide6.QtGui import QPixmap
+        self.poster_image=image;self.fit_poster()
+    def fit_poster(self):
+        from PySide6.QtGui import QPixmap,QPainter,QColor
+        image=getattr(self,'poster_image',None)
+        if image is None or not self.loading.isVisible():return
+        pixmap=QPixmap.fromImage(image).scaled(self.poster.size(),Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation)
+        painter=QPainter(pixmap);painter.fillRect(pixmap.rect(),QColor(16,18,20,150));painter.end();self.poster.setPixmap(pixmap)
     def install_timer_shortcuts(self):
         actions={'Ctrl+[':lambda:self.next_video(-1),'Ctrl+]':lambda:self.next_video(1),'Delete':self.delete_selected,'Shift+Left':lambda:self.step(-1,True),'Shift+Right':lambda:self.step(1,True),'S':self.set_start,'E':self.set_failure,'P':self.add_point,'L':lambda:self.toggle_hand_timer('clip','left'),'R':lambda:self.toggle_hand_timer('clip','right'),'Q':lambda:self.toggle_hand_timer('rest','left'),'W':lambda:self.toggle_hand_timer('rest','right'),'C':lambda:self.toggle_hand_timer('chalk','left'),'V':lambda:self.toggle_hand_timer('chalk','right')}
         for key,callback in actions.items():
@@ -315,8 +336,13 @@ class Window(LegacyWindow):
             self.pause()
             if self.reader:self.reader.close()
             self.reader=None;self.history=None;self.video_path=Path(path);self.label_path=None;self.saved=None;self.index_ready(cached[1])
-        else:super().begin_video(path)
+        else:
+            super().begin_video(path)
+            if self.worker:self.worker.progress.connect(lambda v:self.loading_stage.setText(f'Reading frame times · {v}%' if v else 'Checking the file identity'));self.worker.finished.connect(self.refresh_live)
         self.refresh_collection();self.refresh_live()
+    def resizeEvent(self,event):
+        super().resizeEvent(event)
+        if hasattr(self,'loading'):self.fit_poster()
     def closeEvent(self,event):
         if self.coaching_export_worker and self.coaching_export_worker.isRunning():
             self.coaching_export_worker.requestInterruption();self.coaching_export_worker.wait()
@@ -335,7 +361,7 @@ class Window(LegacyWindow):
             self.decode_future=None
         super().closeEvent(event)
         if event.isAccepted():
-            self.decoder.shutdown(wait=True)
+            self.decoder.shutdown(wait=True);self.home.shutdown()
             if hasattr(self,'sync_view'):self.sync_view.shutdown()
             if hasattr(self,'library'):self.library.shutdown()
             if self.pending_update:self.pending_update();self.pending_update=None
@@ -394,12 +420,12 @@ class Window(LegacyWindow):
         if hasattr(self,"empty_hint"):
             loaded=bool(self.reader);opening=bool(self.worker and self.worker.isRunning())
             for widget in (self.image,self.precision_scrubber,self.transport,self.boundary_box,self.climb_box):widget.setVisible(loaded)
-            self.empty_hint.setVisible(not loaded);self.empty_panel.hide();self.measure_page.widget(0).layout().activate();self.analysis_panel.setVisible(loaded and not self.settings.value('inspector_hidden',False,type=bool))
+            self.empty_hint.setVisible(not loaded and not opening);self.loading.setVisible(opening);self.empty_panel.hide();self.measure_page.widget(0).layout().activate();self.analysis_panel.setVisible(loaded and not self.settings.value('inspector_hidden',False,type=bool))
             foot_pending=d.get('footwork',{}).get('pending') if d else None
             self.active_timers.setVisible(loaded and not self.analysis_panel.isVisible() and bool(d and (d['open_events'] or foot_pending)))
             self.active_timers.setText((f"Both feet off running: {max(0,now-foot_pending['start']['seconds']):.1f} s · " if foot_pending else '')+' · '.join(f"{e['hand'].capitalize()} {e['kind']} running: {max(0,now-e['start']['seconds']):.1f} s" for e in (d['open_events'] if d else [])))
-            self.drop_title.setText(f'Opening {self.video_path.name}…' if opening and self.video_path else 'Drop climbing videos here')
-            self.drop_choose.setVisible(not opening);self.drop_open.setEnabled(not opening);self.drop_note.setText('Reading the file once: checksum and every frame timestamp. Cached afterwards.' if opening else 'MP4, MOV or MKV · originals stay where they are, nothing is uploaded')
+            if opening and self.video_path:self.loading_title.setText(self.video_path.name);self.loading_stage.setText('Reading the file once · cached afterwards');self.fit_poster()
+            else:self.poster.clear();self.poster_image=None
             if loaded:self.position.setText(f'<span style="font-size:14pt;font-weight:600">{timecode(now)}</span>&nbsp;&nbsp;<span style="font-size:11px;color:{"#b2b8bf" if self.theme=="dark" else "#59616b"}">frame {self.frame_number}</span>')
             self.start_value.setText('Start '+timecode(d['start']['seconds']) if d and d['start'] else 'Climb start not marked');self.start_button.setText('Edit' if d and d['start'] else 'Mark start');self.start_clear.setVisible(bool(d and d['start']))
             self.end_value.setText('End '+timecode(d['end']['seconds'])+' · '+{'failed':'Fell','completed':'Topped'}.get(d['outcome'],d['outcome']) if d and d['end'] else 'Climb end not marked');self.end_button.setText('Edit' if d and d['end'] else 'Mark end')
@@ -522,7 +548,7 @@ class Window(LegacyWindow):
                 if item['id']==p['id']:item['name']=name.strip()
             self.commit(d)
     def index_ready(self,index):
-        self.progress.hide()
+        self.progress.hide();self.show_workspace()
         try:
             self.reader=self.open_video_reader(index);self.decoder_choice.blockSignals(True);self.decoder_choice.setCurrentIndex(1 if self.reader.backend==GPU_BACKEND else 0);self.decoder_choice.blockSignals(False);self.history=History(empty_labels(index['source']));self.saved=copy.deepcopy(self.document());self.slider.setRange(0,len(self.reader.times)-1);self.frame_number=0
             folders=[self.video_path.parent,ROOT/'videos',self.project.labels]
@@ -739,6 +765,7 @@ class Window(LegacyWindow):
         if not paths:self.statusBar().showMessage('These recordings are already in this project. Use Reassign attempt… to change their identity.',8000);self.show_view(self.library);return
         from .context_ui import intake
         if not intake(self,paths):return
+        self.show_workspace()
         for path in paths:self.workspace.add(path)
         self.workspace.save();self.refresh_collection()
         if not self.reader and not (self.worker and self.worker.isRunning()) and str(Path(paths[0]).resolve()) in self.workspace.assignments:self.begin_video(Path(paths[0]))
@@ -904,7 +931,7 @@ class Window(LegacyWindow):
         if project==self.project:self.show_view(self.library);return True
         if not self.allow_change():return False
         self.remember_current();self.pause()
-        for worker in (self.collection_worker,getattr(self.library,'bulk',None),self.preview_worker):
+        for worker in (self.collection_worker,getattr(self.library,'bulk',None),self.preview_worker,getattr(self.home,'worker',None)):
             if worker and worker.isRunning():worker.requestInterruption();worker.wait()
         if self.worker and self.worker.isRunning():self.worker.requestInterruption();self.worker.wait()
         self.finish_scrub();self.decode_poll.stop()

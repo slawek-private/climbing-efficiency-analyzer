@@ -74,9 +74,23 @@ QToolTip { color: $ink; background: $panel; border: 1px solid $line; padding: 8p
 QMenu { color: $ink; background: $panel; border: 1px solid $line; }
 QMenu::item:selected { background: $selected; }
 QFrame#banner { background: $selected; border: 1px solid $line; border-radius: 6px; }
-QFrame#drop { background: #101214; border: 2px dashed $line; border-radius: 8px; }
-QFrame#drop QLabel,QFrame#drop QPushButton[role="quiet"] { color: #e5e7eb; }
-QFrame#drop QLabel#dropTitle { color: white; font-size: 24px; font-weight: 600; }
+QFrame#drop { background: $panel; border: 1px solid $soft; border-radius: 8px; }
+QFrame#drop QLabel#dropTitle { font-size: 22px; font-weight: 600; }
+QFrame#loading { background: #101214; border-radius: 8px; }
+QFrame#loading QLabel { color: #e5e7eb; }
+QFrame#loading QLabel#dropTitle { color: white; font-size: 18px; font-weight: 600; }
+QFrame#loading QProgressBar { background: #2c3137; border-radius: 1px; max-height: 3px; }
+QFrame#loading QProgressBar::chunk { background: #4386f5; border-radius: 1px; }
+QWidget#homeBody { background: $background; }
+QLabel#homeTitle { font-size: 20px; font-weight: 600; }
+QFrame#tile,QFrame#intent { background: $panel; border: 1px solid $soft; border-radius: 8px; }
+QFrame#tile:hover,QFrame#intent:hover,QFrame#newTile:hover { border-color: $line; }
+QFrame#tile:focus,QFrame#intent:focus { border-color: $accent; }
+QFrame#newTile { background: transparent; border: 1px dashed $line; border-radius: 8px; color: $muted; }
+QLabel#poster { background: $soft; border-radius: 4px; color: $muted; font-size: 28px; font-weight: 600; }
+QLabel#tileTitle { font-size: 14px; font-weight: 600; }
+QLabel#badge[state="warn"] { color: #b45309; font-size: 12px; }
+QLabel#badge[state="good"] { color: #15803d; font-size: 12px; }
 QLabel#handTitle { font-size: 14px; font-weight: 600; color: $ink; }
 QLabel#saveState[state="error"] { color: $ink; font-weight: 700; }
 '''
@@ -162,6 +176,8 @@ class SettingsDialog(QDialog):
         form.addRow('Video decoder',w.decoder_choice)
         w.frame_step=QSpinBox();w.frame_step.setRange(1,120);w.frame_step.setValue(int(w.settings.value("frame_step",5)));w.frame_step.setSuffix(' frames');w.frame_step.valueChanged.connect(w.set_frame_step)
         w.frame_step.setToolTip('Frames moved by ← / → and the step buttons. Shift+← / → always moves one frame.');form.addRow('Step size',w.frame_step)
+        w.startup_choice=QComboBox();w.startup_choice.addItem('Home','home');w.startup_choice.addItem('Last project',"last");w.startup_choice.setCurrentIndex(max(0,w.startup_choice.findData(w.settings.value('startup','home'))))
+        w.startup_choice.currentIndexChanged.connect(lambda i:w.settings.setValue('startup',w.startup_choice.itemData(i)));form.addRow('At startup',w.startup_choice)
         updates=QCheckBox('Check for updates automatically');updates.setChecked(w.settings.value('auto_update',True,type=bool));updates.toggled.connect(lambda on:(w.settings.setValue('auto_update',on),w.auto_update_action.setChecked(on)))
         form.addRow('',updates);storage=button('Storage…',w.show_storage);form.addRow('Cache',storage)
         close=QDialogButtonBox(QDialogButtonBox.StandardButton.Close);close.rejected.connect(self.reject);form.addRow(close)
@@ -171,11 +187,15 @@ def build(w):
     w.setFont(interface_font())
     # Retain inherited editor fields and callbacks while moving visible controls.
     old=w.takeCentralWidget();old.setParent(w);old.hide();w.legacy_widget=old
-    root=QWidget();root.setObjectName('workspace');outer=QVBoxLayout(root);outer.setContentsMargins(14,10,14,4);outer.setSpacing(8);w.setCentralWidget(root)
+    from PySide6.QtWidgets import QStackedWidget
+    from .home import HomePage
+    root=QWidget();root.setObjectName('workspace');outer=QVBoxLayout(root);outer.setContentsMargins(14,10,14,4);outer.setSpacing(8)
+    w.stack=QStackedWidget();w.home=HomePage(w);w.stack.addWidget(w.home);w.stack.addWidget(root);w.setCentralWidget(w.stack);w.workspace_root=root
     w.settings_dialog=SettingsDialog(w)
     # Menu bar (native on macOS): everything that is not part of measuring a climb.
     bar=w.menuBar();menu=bar.addMenu('File')
-    for text,cb in [('Projects…',w.show_projects),('New project…',lambda:w.show_projects('new')),('Import project…',lambda:w.show_projects('import')),('Export this project…',lambda:w.show_projects('export'))]:menu.addAction(text,cb)
+    home=QAction('Home',w);home.setShortcut('Ctrl+Shift+H');home.triggered.connect(w.show_home);menu.addAction(home)
+    for text,cb in [('New training session…',lambda:w.new_session('training')),('New competition event…',lambda:w.new_session('competition')),('New project…',lambda:w.show_projects('new')),('Import project…',lambda:w.show_projects('import')),('Export this project…',lambda:w.show_projects('export'))]:menu.addAction(text,cb)
     menu.addSeparator()
     for text,cb in [('Add videos…',w.open_video),('Load labels…',w.load_labels)]:menu.addAction(text,cb)
     menu.addSeparator();menu.addAction('Storage…',w.show_storage)
@@ -201,7 +221,7 @@ def build(w):
     about=QAction(f'About {APP_NAME}',w);about.setMenuRole(QAction.MenuRole.AboutRole);about.triggered.connect(w.show_about);menu.addAction(about)
     # Header: project, video, save state, export.
     top=QHBoxLayout();top.setSpacing(8)
-    w.project_button=button('Project',w.show_projects,'quiet');w.project_button.setMinimumWidth(110);w.project_button.setMaximumWidth(220);w.project_button.setProperty('elide',True);w.project_button.setSizePolicy(QSizePolicy.Policy.Ignored,QSizePolicy.Policy.Fixed);w.project_button.setToolTip('Current project. Click to create, switch, export or import projects.');top.addWidget(w.project_button)
+    w.project_button=button('Project',w.show_home,'quiet');w.project_button.setMinimumWidth(110);w.project_button.setMaximumWidth(220);w.project_button.setProperty('elide',True);w.project_button.setSizePolicy(QSizePolicy.Policy.Ignored,QSizePolicy.Policy.Fixed);w.project_button.setToolTip('Current project · click for Home: switch projects, start a session or event');top.addWidget(w.project_button)
     w.collection_bar=QWidget();queue=QHBoxLayout(w.collection_bar);queue.setContentsMargins(0,0,0,0);queue.setSpacing(8)
     w.video_selector=QComboBox();w.video_selector.setMinimumWidth(100);w.video_selector.setSizePolicy(QSizePolicy.Policy.Ignored,QSizePolicy.Policy.Fixed);w.video_selector.setPlaceholderText('No videos yet: drop them into the window');w.video_selector.setToolTip('Videos in this project · Ctrl+[ / Ctrl+] for previous / next')
     w.video_selector.currentIndexChanged.connect(w.select_video);w.video_selector.hide()
@@ -226,7 +246,6 @@ def build(w):
     w.save_banner=QFrame();w.save_banner.setObjectName('banner');failure=QHBoxLayout(w.save_banner);w.save_detail=label('');failure.addWidget(w.save_detail,1)
     for text,cb in [('Retry',w.autosave),('Save copy…',w.save_copy),('Show folder',w.show_save_folder)]:failure.addWidget(button(text,cb))
     w.save_banner.hide();outer.addWidget(w.save_banner)
-    w.progress.setFormat('Opening video · reading every frame timestamp · %p%');w.progress.setTextVisible(True);w.progress.setToolTip(LOADING_HELP);outer.addWidget(w.progress)
     # Three places: measure one climb, compare climbs, manage the videos.
     w.main_tabs=QTabWidget();w.main_tabs.setDocumentMode(True);outer.addWidget(w.main_tabs,1)
     split=QSplitter(Qt.Orientation.Horizontal);w.main_tabs.addTab(split,'Video analysis');w.measure_page=split
@@ -236,11 +255,17 @@ def build(w):
     w.attempt_navigation=AttemptNavigation(w);identity_row.addWidget(w.attempt_navigation,1);v.addLayout(identity_row)
     w.empty_hint=QFrame();w.empty_hint.setObjectName('drop');drop=QVBoxLayout(w.empty_hint);drop.setContentsMargins(24,24,24,24);drop.addStretch()
     w.drop_title=label('Drop climbing videos here','dropTitle');w.drop_title.setAlignment(Qt.AlignmentFlag.AlignCenter);drop.addWidget(w.drop_title)
-    line=QHBoxLayout();line.addStretch();w.drop_choose=button('Choose files…',w.open_video,'primary');line.addWidget(w.drop_choose);w.drop_open=button('Open project…',w.show_projects);line.addWidget(w.drop_open);line.addStretch();drop.addLayout(line)
     w.drop_note=label('MP4, MOV or MKV · originals stay where they are, nothing is uploaded','muted');w.drop_note.setAlignment(Qt.AlignmentFlag.AlignCenter);drop.addWidget(w.drop_note)
-    checklist=label(CHECKLIST,'muted');checklist.setAlignment(Qt.AlignmentFlag.AlignCenter);drop.addSpacing(10);drop.addWidget(checklist)
-    line=QHBoxLayout();line.addStretch();line.addWidget(button('Recording tips',w.show_tips,'quiet'));line.addStretch();drop.addLayout(line);drop.addStretch()
+    line=QHBoxLayout();line.addStretch();w.drop_choose=button('Add videos…',w.open_video,'primary');line.addWidget(w.drop_choose);w.drop_open=button('Home',w.show_home,'quiet');line.addWidget(w.drop_open);line.addStretch();drop.addSpacing(6);drop.addLayout(line);drop.addStretch()
     v.addWidget(w.empty_hint,1)
+    # Opening a video: the card itself is the loading surface, with the first frame behind a thin progress line.
+    w.loading=QFrame();w.loading.setObjectName('loading');loading=QVBoxLayout(w.loading);loading.setContentsMargins(0,0,0,0);loading.setSpacing(0)
+    w.progress.setParent(w.loading);w.progress.setTextVisible(False);w.progress.setFixedHeight(3);loading.addWidget(w.progress)
+    w.poster=QLabel();w.poster.setAlignment(Qt.AlignmentFlag.AlignCenter);w.poster.setMinimumSize(1,1);w.poster.setSizePolicy(QSizePolicy.Policy.Ignored,QSizePolicy.Policy.Ignored);loading.addWidget(w.poster,1)
+    w.loading_title=label('','dropTitle');w.loading_title.setAlignment(Qt.AlignmentFlag.AlignCenter);loading.addWidget(w.loading_title)
+    w.loading_stage=label('','muted');w.loading_stage.setAlignment(Qt.AlignmentFlag.AlignCenter);loading.addWidget(w.loading_stage)
+    line=QHBoxLayout();line.addStretch();w.loading_cancel=button('Cancel',w.cancel_opening,'quiet');line.addWidget(w.loading_cancel);line.addStretch();loading.addSpacing(8);loading.addLayout(line);loading.addSpacing(14)
+    w.loading.hide();v.addWidget(w.loading,1)
     w.image.setParent(video);w.image.setBackgroundBrush(QColor('#101214'));w.image.setAcceptDrops(False);w.image.viewport().setAcceptDrops(False);v.addWidget(w.image,1)
     from .scrubber import PrecisionScrubber
     w.precision_scrubber=PrecisionScrubber();w.precision_scrubber.seek.connect(w.scrub_seconds);w.precision_scrubber.released.connect(w.finish_scrub);w.precision_scrubber.observationSelected.connect(w.select_timeline_event);v.addWidget(w.precision_scrubber)

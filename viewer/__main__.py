@@ -1,5 +1,5 @@
 import argparse
-from .simple import main
+from .launch import main
 
 parser=argparse.ArgumentParser(description="Local manual climbing-video labels")
 parser.add_argument("--video",help="Optional video to open")
