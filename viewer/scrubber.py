@@ -43,13 +43,18 @@ class PrecisionScrubber(QWidget):
         bg='#202326' if self.dark else '#f4f5f6';text='#b2b8bf' if self.dark else '#59616b'
         p.fillRect(self.rect(),QColor(bg));a,b=self.bounds();span=b-a
         # Select a readable ruler interval, including subsecond ticks when zoomed.
+        badge=QRectF()
+        if a<=self.position<=b:
+            font=p.font();font.setBold(True);font.setPixelSize(11);width=p.fontMetrics().boundingRect('NOW '+self.time_text(self.position-self.time_origin)).width()+16
+            x=self.x_at(self.position);badge=QRectF(max(1,min(self.width()-width-1,x-width/2)),1,width,22)
         desired=span/max(2,self.width()/90)
         step=next((v for v in (.1,.2,.5,1,2,5,10,15,30,60,120,300,600) if v>=desired),600)
         t=math.ceil((a-self.time_origin)/step)*step+self.time_origin
         while t<=b:
             x=self.x_at(t);p.setPen(QColor(text));p.drawLine(int(x),29,int(x),43)
             label=self.time_text(t-self.time_origin)[:-4] if step>=1 else self.time_text(t-self.time_origin)[:-2]
-            p.drawText(QRectF(max(0.,min(self.width()-70.,x-35)),5,70,20),Qt.AlignmentFlag.AlignCenter,label)
+            rect=QRectF(max(0.,min(self.width()-70.,x-35)),5,70,20)
+            if not badge.intersects(rect.adjusted(14,0,-14,0)):p.drawText(rect,Qt.AlignmentFlag.AlignCenter,label)
             for j in range(1,5):
                 minor=t+j*step/5
                 if minor<b:p.drawLine(int(self.x_at(minor)),36,int(self.x_at(minor)),43)

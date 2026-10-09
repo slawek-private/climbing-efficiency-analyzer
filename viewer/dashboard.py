@@ -48,7 +48,7 @@ class Dashboard(QWidget):
             if line.itemAt(i).widget():line.itemAt(i).widget().hide()
         note=QLabel('Observed hand choices, not a score: route geometry and stance affect clipping hand. More alternation or less rest is not automatically better. Missing chalking is unknown, not zero.');note.setWordWrap(True);note.setObjectName('muted');layout.addWidget(note)
         self.tabs=QTabWidget();layout.addWidget(self.tabs,1);self.hands=table();self.recovery=table();self.clips=table();self.point_table=table()
-        self.tabs.addTab(self.hands,'Clipping hands');self.tabs.addTab(self.recovery,'Rest & chalk')
+        self.tabs.addTab(self.hands,'Clipping hands');self.tabs.addTab(self.recovery,'Rest && chalk')
         from .charts import DetailPlots
         def paired(t,title):
             scroll=QScrollArea();scroll.setWidgetResizable(True);page=QWidget();v=QVBoxLayout(page);t.setFixedHeight(220);v.addWidget(t);plots=DetailPlots();v.addWidget(plots);v.addStretch();scroll.setWidget(page);self.tabs.addTab(scroll,title);return plots,v

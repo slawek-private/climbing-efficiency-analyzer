@@ -13,6 +13,16 @@ def timecode_font():
     from PySide6.QtGui import QFont,QFontDatabase
     return QFont('Consolas') if sys.platform=='win32' else QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
 
+def apply_window_chrome(window, dark):
+    """Match the native frame to the theme: immersive dark title bar and rounded corners on Windows. No-op elsewhere."""
+    if sys.platform!='win32':return
+    import ctypes
+    try:
+        hwnd=int(window.winId());dwm=ctypes.windll.dwmapi;value=ctypes.c_int(1 if dark else 0)
+        dwm.DwmSetWindowAttribute(hwnd,20,ctypes.byref(value),ctypes.sizeof(value))  # DWMWA_USE_IMMERSIVE_DARK_MODE
+        corner=ctypes.c_int(2);dwm.DwmSetWindowAttribute(hwnd,33,ctypes.byref(corner),ctypes.sizeof(corner))  # DWMWA_WINDOW_CORNER_PREFERENCE · round (Windows 11, ignored on 10)
+    except (AttributeError,OSError):pass
+
 def hidden_process_options():
     return {'creationflags':subprocess.CREATE_NO_WINDOW} if sys.platform=='win32' else {}
 

@@ -51,6 +51,9 @@ QTabBar::tab { background: transparent; color: $muted; padding: 9px 16px; border
 QTabBar::tab:selected { color: $ink; border-bottom: 2px solid $accent; }
 QTabBar::tab:hover { background: $hover; }
 QTabBar::tab:focus { border-top-color: $accent; background: $selected; }
+QMenuBar { background: $background; color: $ink; padding: 2px 6px; }
+QMenuBar::item { padding: 4px 8px; border-radius: 4px; }
+QMenuBar::item:selected { background: $hover; }
 QScrollArea { border: none; background: transparent; }
 QScrollBar:vertical { background: $background; width: 10px; margin: 0; }
 QScrollBar::handle:vertical { background: $line; border-radius: 4px; min-height: 30px; }
@@ -233,7 +236,7 @@ def build(w):
     w.attempt_navigation=AttemptNavigation(w);identity_row.addWidget(w.attempt_navigation,1);v.addLayout(identity_row)
     w.empty_hint=QFrame();w.empty_hint.setObjectName('drop');drop=QVBoxLayout(w.empty_hint);drop.setContentsMargins(24,24,24,24);drop.addStretch()
     w.drop_title=label('Drop climbing videos here','dropTitle');w.drop_title.setAlignment(Qt.AlignmentFlag.AlignCenter);drop.addWidget(w.drop_title)
-    line=QHBoxLayout();line.addStretch();w.drop_choose=button('Choose files…',w.open_video,'primary');line.addWidget(w.drop_choose);line.addWidget(button('Open project…',w.show_projects));line.addStretch();drop.addLayout(line)
+    line=QHBoxLayout();line.addStretch();w.drop_choose=button('Choose files…',w.open_video,'primary');line.addWidget(w.drop_choose);w.drop_open=button('Open project…',w.show_projects);line.addWidget(w.drop_open);line.addStretch();drop.addLayout(line)
     w.drop_note=label('MP4, MOV or MKV · originals stay where they are, nothing is uploaded','muted');w.drop_note.setAlignment(Qt.AlignmentFlag.AlignCenter);drop.addWidget(w.drop_note)
     checklist=label(CHECKLIST,'muted');checklist.setAlignment(Qt.AlignmentFlag.AlignCenter);drop.addSpacing(10);drop.addWidget(checklist)
     line=QHBoxLayout();line.addStretch();line.addWidget(button('Recording tips',w.show_tips,'quiet'));line.addStretch();drop.addLayout(line);drop.addStretch()
@@ -248,7 +251,7 @@ def build(w):
     for b in (w.step_back_button,w.step_forward_button):b.setFixedWidth(40);controls.addWidget(b)
     w.speed.setParent(w.transport);w.speed.setToolTip('Playback speed');controls.addWidget(w.speed);controls.addStretch()
     w.position.setParent(w.transport);w.position.setObjectName('timecode');w.position.setWordWrap(False);w.position.setTextFormat(Qt.TextFormat.RichText);w.position.setToolTip('Playhead: minutes:seconds.milliseconds and the frame number in the original video.\n\n'+LOADING_HELP)
-    font=timecode_font();font.setPixelSize(19);w.position.setFont(font);controls.addWidget(w.position)
+    font=timecode_font();font.setPointSizeF(14);w.position.setFont(font);controls.addWidget(w.position)
     w.timeline_zoom=QComboBox();w.timeline_zoom.setToolTip('Timeline zoom · pinch or scroll on the timeline; two-finger swipe or right-drag pans')
     for title,seconds in [('Full video',0),('60 s',60),('30 s',30),('15 s',15),('5 s',5),('1 s',1)]:w.timeline_zoom.addItem(title,seconds)
     w.timeline_zoom.currentIndexChanged.connect(lambda index:w.precision_scrubber.set_span(w.timeline_zoom.itemData(index)))
@@ -384,5 +387,7 @@ def apply_theme(w,theme):
     for role,color in [(QPalette.ColorRole.Window,tokens['background']),(QPalette.ColorRole.Base,tokens['panel']),(QPalette.ColorRole.AlternateBase,tokens['background']),(QPalette.ColorRole.Button,tokens['panel']),(QPalette.ColorRole.WindowText,tokens['ink']),(QPalette.ColorRole.Text,tokens['ink']),(QPalette.ColorRole.ButtonText,tokens['ink']),(QPalette.ColorRole.Highlight,tokens['accent']),(QPalette.ColorRole.HighlightedText,'white')]:palette.setColor(role,QColor(color))
     app.setPalette(palette);w.setStyleSheet(style+'\n'+extra_style(dark));w.theme='dark' if dark else 'light';w.appearance=theme;w.theme_button.setText('Light mode' if dark else 'Dark mode')
     for value,action in w.appearance_actions.items():action.setChecked(value==theme)
+    from .platform_runtime import apply_window_chrome
+    apply_window_chrome(w,dark)
     for tile in w.sync_view.tiles:tile.timeline.dark=dark;tile.timeline.update()
     w.precision_scrubber.dark=dark;w.precision_scrubber.update();w.comparison_charts.dark=dark;w.comparison_charts.redraw();w.pattern_dashboard.render();w.settings.setValue('theme',theme)

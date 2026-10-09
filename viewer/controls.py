@@ -4,7 +4,14 @@ from PySide6.QtGui import QPainter, QPen
 from PySide6.QtWidgets import QPushButton as NativeButton, QLabel, QStyleOptionButton, QStylePainter, QStyle, QTabWidget, QScrollArea
 
 
+KEYBOARD_REASONS = (Qt.FocusReason.TabFocusReason, Qt.FocusReason.BacktabFocusReason, Qt.FocusReason.ShortcutFocusReason)
+
+
 class Button(NativeButton):
+    keyboard_focus = False
+    def focusInEvent(self, event):
+        self.keyboard_focus = event.reason() in KEYBOARD_REASONS
+        super().focusInEvent(event)
     def paintEvent(self, event):
         if self.property('elide'):
             option = QStyleOptionButton()
@@ -15,7 +22,7 @@ class Button(NativeButton):
             painter.end()
         else:
             super().paintEvent(event)
-        if self.hasFocus():
+        if self.hasFocus() and self.keyboard_focus:
             painter = QPainter(self)
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
             painter.setBrush(Qt.BrushStyle.NoBrush)

@@ -399,8 +399,8 @@ class Window(LegacyWindow):
             self.active_timers.setVisible(loaded and not self.analysis_panel.isVisible() and bool(d and (d['open_events'] or foot_pending)))
             self.active_timers.setText((f"Both feet off running: {max(0,now-foot_pending['start']['seconds']):.1f} s · " if foot_pending else '')+' · '.join(f"{e['hand'].capitalize()} {e['kind']} running: {max(0,now-e['start']['seconds']):.1f} s" for e in (d['open_events'] if d else [])))
             self.drop_title.setText(f'Opening {self.video_path.name}…' if opening and self.video_path else 'Drop climbing videos here')
-            self.drop_choose.setVisible(not opening);self.drop_note.setText('Reading the file once: checksum and every frame timestamp. Cached afterwards.' if opening else 'MP4, MOV or MKV · originals stay where they are, nothing is uploaded')
-            if loaded:self.position.setText(f'<span style="font-size:19px;font-weight:600">{timecode(now)}</span>&nbsp;&nbsp;<span style="font-size:11px;color:{"#b2b8bf" if self.theme=="dark" else "#59616b"}">frame {self.frame_number}</span>')
+            self.drop_choose.setVisible(not opening);self.drop_open.setEnabled(not opening);self.drop_note.setText('Reading the file once: checksum and every frame timestamp. Cached afterwards.' if opening else 'MP4, MOV or MKV · originals stay where they are, nothing is uploaded')
+            if loaded:self.position.setText(f'<span style="font-size:14pt;font-weight:600">{timecode(now)}</span>&nbsp;&nbsp;<span style="font-size:11px;color:{"#b2b8bf" if self.theme=="dark" else "#59616b"}">frame {self.frame_number}</span>')
             self.start_value.setText('Start '+timecode(d['start']['seconds']) if d and d['start'] else 'Climb start not marked');self.start_button.setText('Edit' if d and d['start'] else 'Mark start');self.start_clear.setVisible(bool(d and d['start']))
             self.end_value.setText('End '+timecode(d['end']['seconds'])+' · '+{'failed':'Fell','completed':'Topped'}.get(d['outcome'],d['outcome']) if d and d['end'] else 'Climb end not marked');self.end_button.setText('Edit' if d and d['end'] else 'Mark end')
             self.end_edit.setVisible(bool(d and d['end']));self.end_clear.setVisible(bool(d and d['end']))
@@ -1077,4 +1077,4 @@ def main(video=None):
     app=QApplication.instance() or QApplication(sys.argv);app.setStyle('Fusion')
     from PySide6.QtGui import QIcon
     app.setWindowIcon(QIcon(str(Path(__file__).resolve().parent/'assets'/'icon.png')));window=Window(video)
-    available=app.primaryScreen().availableGeometry();window.resize(min(1450,available.width()-40),min(1000,available.height()-40));window.guidance=True;window.show();QTimer.singleShot(0,lambda:window.resize(min(1450,available.width()-40),min(1000,available.height()-40)));window.start_resource_monitor();QTimer.singleShot(400,window.first_run);return app.exec()
+    available=app.primaryScreen().availableGeometry();window.resize(min(1450,available.width()-40),min(1000,available.height()-40));window.guidance=True;window.show();window.setFocus();QTimer.singleShot(0,lambda:window.resize(min(1450,available.width()-40),min(1000,available.height()-40)));window.start_resource_monitor();QTimer.singleShot(400,window.first_run);return app.exec()

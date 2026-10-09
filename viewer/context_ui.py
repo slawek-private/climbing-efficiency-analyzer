@@ -203,7 +203,7 @@ class SessionBar(QWidget):
         super().__init__();self.w=w;line=QHBoxLayout(self);line.setContentsMargins(0,0,0,0)
         self.sessions=QComboBox();self.sessions.setAccessibleName('Current session');self.sessions.setMinimumWidth(200);self.sessions.setSizePolicy(QSizePolicy.Policy.Ignored,QSizePolicy.Policy.Fixed);line.addWidget(self.sessions,1)
         new=QPushButton('New session…');new.setProperty('role','quiet');new.clicked.connect(lambda:create_session(w));line.addWidget(new)
-        manage=QPushButton('Athletes & sessions ▾');manage.setProperty('role','quiet');menu=QMenu(manage);manage.setMenu(menu);line.addWidget(manage)
+        manage=QPushButton('Athletes && sessions ▾');manage.setProperty('role','quiet');menu=QMenu(manage);manage.setMenu(menu);line.addWidget(manage)
         for title,callback in [('Add athlete…',lambda:self.add()),('Rename / edit athlete…',self.edit),('Athlete history…',self.history),('Add route version…',lambda:create_route(w)),('Organise existing attempts…',lambda:organise(w))]:menu.addAction(title,callback)
         self.sessions.currentIndexChanged.connect(self.changed)
         self.pending=QPushButton();self.pending.setProperty('role','quiet');self.pending.clicked.connect(self.review_pending);line.addWidget(self.pending)
